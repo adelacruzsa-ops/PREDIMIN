@@ -14,7 +14,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from config import DIR_MODELOS, DIR_SALIDAS, ECA_PERU, ETIQUETAS, GUIA_OMS
+from config import ARCHIVO_DATOS, DIR_MODELOS, DIR_SALIDAS, ECA_PERU, ETIQUETAS, GUIA_OMS
 from recomendador import (contribuciones, evaluar_escenarios, prediccion_red_neuronal,
                           recomendar)
 
@@ -337,7 +337,7 @@ def pestana_evaluacion():
         "Escenario": esc["escenario"],
         "PM10 (µg/m³)": esc["pm10_ugm3"],
         "Prob. > 45": esc["prob_superar_45"] * 100,
-        "Cambio vs. base (%)": -esc["reduccion_pm10_%"],
+        "Cambio vs. base (%)": -esc["reduccion_pm10_%"] + 0.0,
         "Nivel": [f"{NIVELES[n]['icono']} {NIVELES[n]['texto']}" for n in esc["nivel"]],
     })
     st.dataframe(vista, hide_index=True, width="stretch", column_config={
@@ -351,6 +351,187 @@ def pestana_evaluacion():
         "(humedad) tienen respaldo estadístico; las variables de voladura no muestran relación "
         "significativa con el PM10 registrado. Use la predicción como apoyo a la decisión, no "
         "como un valor exacto.</div>", unsafe_allow_html=True)
+
+    st.divider()
+    st.markdown("#### Ficha de evaluación pre-voladura (PDF)")
+    st.caption("Documento imprimible con esta evaluación: parámetros, nivel de alerta, gráficos, "
+               "medidas, escenarios y firmas de conformidad.")
+    c1, c2, c3 = st.columns([1, 1, 1], vertical_alignment="bottom")
+    codigo = c1.text_input("Código del disparo (opcional)", placeholder="p. ej. LA-0101")
+    responsable = c2.text_input("Elaborado por (opcional)", placeholder="Nombre y cargo")
+    if c3.button("Preparar ficha PDF", type="primary", width="stretch"):
+        from ficha_pdf import generar_ficha
+        with st.spinner("Generando la ficha..."):
+            st.session_state["ficha_pdf"] = generar_ficha(evento, codigo.strip(),
+                                                          responsable.strip())
+            st.session_state["ficha_nombre"] = (
+                f"ficha_prevoladura_{codigo.strip() or 'PREDIMIN'}.pdf".replace(" ", "_"))
+    if "ficha_pdf" in st.session_state:
+        st.download_button("⬇ Descargar ficha PDF", st.session_state["ficha_pdf"],
+                           file_name=st.session_state["ficha_nombre"], mime="application/pdf",
+                           width="stretch")
+        st.caption("Si cambia los parámetros, vuelva a pulsar «Preparar ficha PDF».")
+
+
+# ---------------------------------------------------------------------------
+# Pestaña: programa de voladuras
+# ---------------------------------------------------------------------------
+def pestana_programa():
+    from programa import a_excel, evaluar_programa, leer, plantilla
+
+    st.markdown("#### Evaluación del programa de voladuras")
+    st.markdown(
+        "<div class='pm-note'>Evalúe todos los disparos programados de la semana a la vez. "
+        "El sistema los ordena de mayor a menor riesgo para priorizar el riego, la "
+        "nebulización o la reprogramación.</div>", unsafe_allow_html=True)
+    st.write("")
+    c1, c2 = st.columns([1, 2], gap="large")
+    with c1:
+        st.markdown("**1. Descargue la plantilla**")
+        st.download_button("⬇ Plantilla Excel", plantilla(), "plantilla_programa_PREDIMIN.xlsx",
+                           width="stretch")
+        st.markdown("**2. Llénela con los disparos programados**")
+        st.caption("Una fila por disparo. Use el pronóstico meteorológico del día previsto.")
+    with c2:
+        st.markdown("**3. Suba el archivo**")
+        archivo = st.file_uploader("Programa de voladuras (.xlsx)", type=["xlsx"],
+                                   label_visibility="collapsed")
+        usar_ejemplo = st.checkbox("Probar con el programa de ejemplo de la plantilla")
+
+    if archivo is None and not usar_ejemplo:
+        return
+    from io import BytesIO
+    try:
+        df = leer(archivo if archivo is not None else BytesIO(plantilla()))
+        with st.spinner(f"Evaluando {len(df)} disparos..."):
+            res = evaluar_programa(df)
+    except Exception as e:  # archivo mal llenado
+        st.error(f"No se pudo evaluar el archivo: {e}")
+        return
+
+    st.divider()
+    evaluados = res.dropna(subset=["Nivel"]) if "Nivel" in res else res.iloc[0:0]
+    k = st.columns(4)
+    tarjeta_kpi(k[0], "Disparos evaluados", f"{len(evaluados)}",
+                f"de {len(res)} filas del archivo")
+    for col, (n, t) in zip(k[1:], (("ROJO", "Riesgo crítico"), ("NARANJA", "Riesgo alto"),
+                                   ("AMARILLO", "Riesgo moderado"))):
+        cant = int((res.get("Nivel") == n).sum()) if "Nivel" in res else 0
+        tarjeta_kpi(col, f"{NIVELES[n]['icono']} {t}", f"{cant}", "disparos")
+    st.write("")
+
+    if "Nivel" in res and len(evaluados):
+        d = evaluados.iloc[::-1]
+        fig = go.Figure(go.Bar(
+            x=d["PM10 esperado (µg/m³)"], y=d["Código"].astype(str), orientation="h",
+            marker=dict(color=[NIVELES[n]["color"] for n in d["Nivel"]], cornerradius=4),
+            text=[f"{v:.1f} · {NIVELES[n]['texto']}" for v, n in
+                  zip(d["PM10 esperado (µg/m³)"], d["Nivel"])],
+            textposition="outside", cliponaxis=False,
+            hovertemplate="%{y}: %{x:.1f} µg/m³<extra></extra>"))
+        fig.add_vline(x=GUIA_OMS["pm10_ugm3"], line=dict(color=TINTA, width=1.2, dash="dot"))
+        fig.update_xaxes(title="PM10 esperado (µg/m³)",
+                         range=[0, max(70, d["PM10 esperado (µg/m³)"].max() * 1.35)])
+        st.plotly_chart(estilo_figura(fig, 80 + 34 * len(d)), width="stretch",
+                        config={"displayModeBar": False})
+
+    vista = res.copy()
+    if "Nivel" in vista:
+        vista["Riesgo"] = [f"{NIVELES[n]['icono']} {NIVELES[n]['texto']}" if n in NIVELES
+                           else "" for n in vista["Nivel"]]
+        vista = vista.drop(columns="Nivel")
+    st.dataframe(vista, hide_index=True, width="stretch", column_config={
+        "Prob. > 45 µg/m³ (%)": st.column_config.ProgressColumn(
+            format="%.0f %%", min_value=0, max_value=100)})
+    st.download_button("⬇ Descargar resultado en Excel", a_excel(res),
+                       "evaluacion_programa_PREDIMIN.xlsx", type="primary")
+
+
+# ---------------------------------------------------------------------------
+# Pestaña: datos historicos
+# ---------------------------------------------------------------------------
+@st.cache_data
+def datos_historicos():
+    df = pd.read_csv(ARCHIVO_DATOS, parse_dates=["fecha"])
+    return df.dropna(subset=["pm10_ugm3"])
+
+
+def pestana_historico():
+    df = datos_historicos()
+    ini, fin = df["fecha"].min().date(), df["fecha"].max().date()
+    rango = st.slider("Periodo", min_value=ini, max_value=fin, value=(ini, fin),
+                      format="MM/YYYY")
+    d = df[(df["fecha"].dt.date >= rango[0]) & (df["fecha"].dt.date <= rango[1])]
+    if d.empty:
+        st.info("No hay registros en el periodo elegido.")
+        return
+    oms, eca = GUIA_OMS["pm10_ugm3"], ECA_PERU["pm10_ugm3"]
+
+    k = st.columns(4)
+    tarjeta_kpi(k[0], "Voladuras con PM10 válido", f"{len(d)}",
+                f"{d['fecha'].dt.date.nunique()} días con registro")
+    tarjeta_kpi(k[1], "PM10 mediano", f"{d['pm10_ugm3'].median():.1f} <small>µg/m³</small>",
+                f"máximo {d['pm10_ugm3'].max():.0f} µg/m³")
+    tarjeta_kpi(k[2], "Superan la guía OMS", f"{(d['pm10_ugm3'] > oms).mean() * 100:.0f} %",
+                f"{int((d['pm10_ugm3'] > oms).sum())} voladuras &gt; 45 µg/m³")
+    tarjeta_kpi(k[3], "Superan el ECA", f"{(d['pm10_ugm3'] > eca).mean() * 100:.1f} %",
+                f"{int((d['pm10_ugm3'] > eca).sum())} voladuras &gt; 100 µg/m³")
+    st.write("")
+
+    st.markdown("#### PM10 registrado en cada voladura")
+    fig = go.Figure(go.Scatter(
+        x=d["fecha"], y=d["pm10_ugm3"], mode="markers",
+        marker=dict(size=8, color=AZUL_SERIE, opacity=0.75, line=dict(width=1, color="white")),
+        customdata=d[["humedad_relativa_pct", "velocidad_viento_ms", "explosivo_total_kg"]],
+        hovertemplate="%{x|%d/%m/%Y}<br>PM10: %{y:.1f} µg/m³<br>Humedad: %{customdata[0]:.0f} %"
+                      "<br>Viento: %{customdata[1]:.1f} m/s<br>Explosivo: %{customdata[2]:,.0f} kg"
+                      "<extra></extra>"))
+    mensual = d.set_index("fecha")["pm10_ugm3"].resample("MS").mean()
+    fig.add_trace(go.Scatter(x=mensual.index + pd.Timedelta(days=14), y=mensual.values,
+                             mode="lines", line=dict(color=AZUL, width=2), connectgaps=False,
+                             hovertemplate="Promedio de %{x|%m/%Y}: %{y:.1f} µg/m³<extra></extra>"))
+    for y, t in ((oms, "Guía OMS 45"), (eca, "ECA Perú 100")):
+        fig.add_hline(y=y, line=dict(color=NIVELES["ROJO"]["color"] if y == eca else TINTA,
+                                     width=1.2, dash="dot"),
+                      annotation_text=t, annotation_position="top left",
+                      annotation_font=dict(size=11, color=TINTA_2))
+    fig.update_yaxes(title="PM10 (µg/m³)")
+    fig.update_xaxes(tickformat="%m/%Y", dtick="M2")
+    st.plotly_chart(estilo_figura(fig, 380), width="stretch", config={"displayModeBar": False})
+    st.markdown("<div class='pm-note'>Puntos: cada voladura · línea: promedio mensual. "
+                "Octubre de 2023 no tiene registros válidos (PM10 = 0, falla del monitor).</div>",
+                unsafe_allow_html=True)
+
+    st.write("")
+    izq, der = st.columns(2, gap="large")
+    with izq:
+        st.markdown("#### % de voladuras sobre la guía OMS, por mes")
+        m = (d.assign(mes=d["fecha"].dt.to_period("M").dt.to_timestamp())
+             .groupby("mes")["pm10_ugm3"].agg(lambda s: (s > oms).mean() * 100))
+        fig = go.Figure(go.Bar(x=m.index, y=m.values, marker=dict(color=AZUL_SERIE,
+                                                                  cornerradius=4),
+                               hovertemplate="%{x|%m/%Y}: %{y:.0f} %<extra></extra>"))
+        fig.update_yaxes(title="% de voladuras > 45 µg/m³", range=[0, 100])
+        fig.update_xaxes(dtick="M2", tickformat="%m/%Y")
+        st.plotly_chart(estilo_figura(fig, 320), width="stretch",
+                        config={"displayModeBar": False})
+    with der:
+        st.markdown("#### Humedad relativa y PM10")
+        from scipy.stats import spearmanr
+        dd = d.dropna(subset=["humedad_relativa_pct"])
+        rho = spearmanr(dd["humedad_relativa_pct"], dd["pm10_ugm3"])[0]
+        fig = go.Figure(go.Scatter(
+            x=dd["humedad_relativa_pct"], y=dd["pm10_ugm3"], mode="markers",
+            marker=dict(size=8, color=AZUL_SERIE, opacity=0.7, line=dict(width=1, color="white")),
+            hovertemplate="Humedad %{x:.0f} % · PM10 %{y:.1f} µg/m³<extra></extra>"))
+        fig.add_hline(y=oms, line=dict(color=TINTA, width=1.2, dash="dot"))
+        fig.update_xaxes(title="Humedad relativa (%)")
+        fig.update_yaxes(title="PM10 (µg/m³)")
+        st.plotly_chart(estilo_figura(fig, 320), width="stretch",
+                        config={"displayModeBar": False})
+        st.markdown(f"<div class='pm-note'>ρ de Spearman = {rho:.2f}: a menor humedad, mayor "
+                    "PM10. Es la variable de mayor influencia en los datos.</div>",
+                    unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
@@ -466,7 +647,8 @@ def pestana_acerca():
                            "incertidumbre."),
         ("4 · Explicación", "Valores SHAP: qué variables empujan la predicción hacia arriba o "
                             "hacia abajo."),
-        ("5 · Recomendación", "Nivel de alerta, medidas de mitigación y escenarios alternativos."),
+        ("5 · Recomendación", "Nivel de alerta, medidas de mitigación, escenarios, ficha PDF y "
+                              "evaluación del programa semanal."),
     ]
     for col, (t, d) in zip(st.columns(5), pasos):
         col.markdown(f"<div class='pm-step'><b>{t}</b><br><span class='pm-note'>{d}</span></div>",
@@ -505,14 +687,12 @@ def pestana_acerca():
         "Arequipa")
 
 
-tab1, tab2, tab3 = st.tabs(["Evaluar voladura", "Desempeño de los modelos",
-                            "Acerca del sistema"])
-with tab1:
-    pestana_evaluacion()
-with tab2:
-    pestana_resultados()
-with tab3:
-    pestana_acerca()
+pestanas = st.tabs(["Evaluar voladura", "Programa de voladuras", "Datos históricos",
+                    "Desempeño de los modelos", "Acerca del sistema"])
+for pestana, funcion in zip(pestanas, (pestana_evaluacion, pestana_programa, pestana_historico,
+                                       pestana_resultados, pestana_acerca)):
+    with pestana:
+        funcion()
 
 st.markdown(
     "<div class='pm-footer'>PREDIMIN · Universidad Nacional de San Agustín de Arequipa · "
