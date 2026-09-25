@@ -1,52 +1,52 @@
 {
   "RandomForest": {
-    "n_estimators": 550,
-    "max_depth": 19,
-    "min_samples_leaf": 8,
-    "max_features": 0.38211092558820536
+    "n_estimators": 200,
+    "max_depth": 7,
+    "min_samples_leaf": 7,
+    "max_features": 0.62658035888649
   },
   "ExtraTrees": {
-    "n_estimators": 150,
-    "max_depth": 15,
-    "min_samples_leaf": 5,
-    "max_features": 0.7087738489021961
+    "n_estimators": 400,
+    "max_depth": 9,
+    "min_samples_leaf": 4,
+    "max_features": 0.9768535915448162
   },
   "GradientBoosting": {
     "n_estimators": 100,
-    "learning_rate": 0.011381659820186149,
-    "max_depth": 3,
-    "min_samples_leaf": 7,
-    "subsample": 0.7447664874619755
+    "learning_rate": 0.017253254730863327,
+    "max_depth": 4,
+    "min_samples_leaf": 10,
+    "subsample": 0.6268494210878071
   },
   "XGBoost": {
-    "n_estimators": 100,
-    "learning_rate": 0.01529685107334084,
+    "n_estimators": 200,
+    "learning_rate": 0.016286716884536492,
     "max_depth": 2,
-    "subsample": 0.8189736931888547,
-    "colsample_bytree": 0.8275765985657748,
-    "min_child_weight": 7.363911420084752,
-    "reg_lambda": 0.003412485917285091
+    "subsample": 0.9116822556022266,
+    "colsample_bytree": 0.7740471563755147,
+    "min_child_weight": 7.83920207271774,
+    "reg_lambda": 0.08241886448735286
   },
   "LightGBM": {
     "n_estimators": 100,
-    "learning_rate": 0.017076054474389826,
-    "num_leaves": 35,
+    "learning_rate": 0.02645373036172781,
+    "num_leaves": 38,
     "min_child_samples": 29,
-    "subsample": 0.7284727804886667,
+    "subsample": 0.7997688291894813,
     "subsample_freq": 1,
-    "colsample_bytree": 0.8262498898771143,
-    "reg_lambda": 0.019166122961542877
+    "colsample_bytree": 0.6224884932836999,
+    "reg_lambda": 0.005550202088313911
   },
   "CatBoost": {
-    "iterations": 300,
-    "learning_rate": 0.015521231712211063,
-    "depth": 3,
-    "l2_leaf_reg": 7.482569693397399
+    "iterations": 500,
+    "learning_rate": 0.03553023643604902,
+    "depth": 8,
+    "l2_leaf_reg": 1.46442172093703
   },
   "RedNeuronal_MLP": {
     "n_capas": 1,
-    "neuronas": 64,
-    "alpha": 21.04998058047481,
-    "learning_rate_init": 0.004138040112561018
+    "neuronas": 4,
+    "activacion": "tanh",
+    "alpha": 2.1741399821159484
   }
 }

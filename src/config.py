@@ -1,5 +1,5 @@
 """
-PREDIMIN - Configuracion central del sistema (version 3: datos reales)
+PREDIMIN - Configuracion central del sistema (version 5: datos reales)
 Tesis: Desarrollo del sistema inteligente de prediccion PREDIMIN para la
 mitigacion de material particulado generado por voladuras en mineria superficial.
 UNSA - Escuela Profesional de Ingenieria de Minas

@@ -1,0 +1,35 @@
+{
+  "arquitectura": {
+    "entradas": 20,
+    "capas_ocultas": [
+      4
+    ],
+    "activacion": "tanh",
+    "salida": 1,
+    "optimizador": "L-BFGS",
+    "regularizacion_L2_alpha": 2.1741399821159484,
+    "redes_en_ensamble": 10,
+    "parametros_por_red": 89,
+    "objetivo_regresion": "log(1 + PM10)"
+  },
+  "regresion": {
+    "R2_CV_medio": 0.1294,
+    "R2_CV_desv": 0.1235,
+    "R2_test": 0.2037,
+    "RMSE_test": 26.7538,
+    "MAE_test": 16.7321,
+    "MAPE_%_test": 81.65,
+    "cobertura_intervalo_90_%": 60.0,
+    "ancho_medio_intervalo_ugm3": 36.86
+  },
+  "clasificacion": {
+    "AUC_CV": 0.7887,
+    "AUC_CV_desv": 0.0698,
+    "AUC_test": 0.7899,
+    "Sensibilidad_test": 0.4615,
+    "Precision_test": 0.5455,
+    "F1_test": 0.5
+  },
+  "n_entrenamiento": 321,
+  "n_prueba": 80
+}

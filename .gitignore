@@ -1,0 +1,8 @@
+# Entorno virtual y archivos temporales
+.venv/
+__pycache__/
+catboost_info/
+*.pyc
+
+# Modelos: se generan en cada PC con python src/entrenamiento.py
+models/*.joblib

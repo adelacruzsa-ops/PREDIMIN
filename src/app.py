@@ -9,7 +9,8 @@ import pandas as pd
 import streamlit as st
 
 from config import COLORES_ALERTA, DIR_SALIDAS, ECA_PERU, GUIA_OMS
-from recomendador import contribuciones, evaluar_escenarios, recomendar
+from recomendador import (contribuciones, evaluar_escenarios, prediccion_red_neuronal,
+                          recomendar)
 
 st.set_page_config(page_title="PREDIMIN", page_icon="⛏", layout="wide")
 
@@ -103,6 +104,19 @@ def pestana_evaluacion():
                 st.progress(p["probabilidad_superar_oms"])
                 st.caption("Modelo de clasificacion entrenado con los registros historicos.")
 
+        rn = prediccion_red_neuronal(evento)
+        if rn is not None:
+            st.markdown("**Segunda opinion: red neuronal (ensamble de 10 redes)**")
+            r1, r2 = st.columns(2)
+            r1.metric("PM10 esperado (red neuronal)", f"{rn['valor']:.1f} µg/m³",
+                      f"incertidumbre del modelo: {rn['limite_inferior']:.0f} – "
+                      f"{rn['limite_superior']:.0f} µg/m³", delta_color="off")
+            r2.metric("Probabilidad de superar 45 µg/m³ (red neuronal)",
+                      f"{rn['probabilidad_superar_oms'] * 100:.0f} %")
+            st.caption("El rango refleja el desacuerdo entre las redes del ensamble "
+                       "(percentiles 5-95): cuanto mas ancho, menos segura es la prediccion. "
+                       "No incluye el ruido del monitor, asi que el PM10 real puede caer fuera.")
+
         st.info(
             "Con los datos actuales el modelo explica una parte limitada de la "
             "variacion del PM10 (ver README). Use el nivel de alerta y la "
@@ -172,7 +186,12 @@ def pestana_resultados():
         ("pm10_por_mes.png", "Estacionalidad del PM10"),
         ("observado_vs_predicho_pm10_ugm3.png", "Modelo seleccionado: observado vs. predicho"),
         ("shap_beeswarm_pm10_ugm3.png", "Importancia de variables (SHAP)"),
+        ("red_neuronal_arquitectura.png", "Arquitectura de la red neuronal"),
+        ("red_neuronal_roc.png", "Red neuronal: curva ROC del riesgo de superar 45 µg/m³"),
+        ("red_neuronal_observado_vs_predicho.png", "Red neuronal: observado vs. predicho con intervalo 90 %"),
         ("red_neuronal_curva_aprendizaje.png", "Curva de aprendizaje de la red neuronal"),
+        ("red_neuronal_regularizacion.png", "Red neuronal: efecto de la regularizacion"),
+        ("red_neuronal_importancia.png", "Red neuronal: importancia de variables (permutacion)"),
     ]
     for archivo, titulo in figuras:
         ruta = DIR_SALIDAS / archivo

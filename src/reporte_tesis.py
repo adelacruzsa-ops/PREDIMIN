@@ -12,6 +12,8 @@ genera el sistema, con formato listo para copiar al documento:
   6_Importancia_SHAP  variables mas influyentes (objetivo 3)
   7_Escenarios        reduccion estimada para un evento tipico (objetivo 5)
   8_Hiperparametros   configuracion final de cada modelo
+  9_Red_Neuronal      arquitectura y desempeño de la red neuronal (ensamble)
+  10_RN_Importancia   importancia de variables para la red (permutacion)
 
 Uso:
     python src/reporte_tesis.py
@@ -101,6 +103,19 @@ def main():
             hojas["8_Hiperparametros"] = pd.DataFrame(
                 [{"Modelo": m, "Hiperparametros": json.dumps(p, ensure_ascii=False)}
                  for m, p in hp.items()])
+
+    ruta = DIR_SALIDAS / "red_neuronal_resumen.json"
+    if ruta.exists():
+        rn = json.loads(ruta.read_text(encoding="utf-8"))
+        filas = [{"Seccion": sec, "Indicador": k,
+                  "Valor": json.dumps(v) if isinstance(v, list) else v}
+                 for sec in ("arquitectura", "regresion", "clasificacion")
+                 for k, v in rn[sec].items()]
+        hojas["9_Red_Neuronal"] = pd.DataFrame(filas)
+    t = _leer("red_neuronal_importancia_permutacion.csv")
+    if t is not None:
+        t.insert(0, "Nombre", t["variable"].map(lambda c: NOMBRES.get(c, c)))
+        hojas["10_RN_Importancia"] = t
 
     salida = DIR_SALIDAS / "RESULTADOS_TESIS.xlsx"
     with pd.ExcelWriter(salida, engine="openpyxl") as w:
