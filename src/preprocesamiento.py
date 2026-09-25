@@ -2,7 +2,7 @@
 PREDIMIN - Modulo 1: carga, control de calidad y preparacion de variables.
 
 Flujo (Zhang et al., 2026): organizacion -> control de calidad ->
-tratamiento de variables -> division 80:20.
+tratamiento de variables -> division 80:20 (agrupada por fecha).
 """
 
 import numpy as np
@@ -84,18 +84,31 @@ def matriz_de_variables(df: pd.DataFrame, medianas: dict | None = None):
     return X, columnas
 
 
+def grupos_de(df: pd.DataFrame, indice=None) -> pd.Series:
+    """
+    Grupo de validacion de cada registro: la FECHA. Los registros de un mismo
+    dia comparten el polvo de fondo, asi que nunca se reparten entre
+    entrenamiento y prueba (evita una fuga de informacion que infla el R2).
+    """
+    g = df["fecha"].dt.strftime("%Y-%m-%d")
+    return g if indice is None else g.loc[indice]
+
+
 def dividir(df: pd.DataFrame, objetivo: str):
     """
-    Division 80:20 estratificada por cuartiles del PM10.
+    Division 80:20 estratificada por cuartiles del PM10 y agrupada por fecha
+    (un mismo dia queda completo en entrenamiento o en prueba).
     Las medianas para imputar se calculan solo con el entrenamiento (sin fuga).
     """
-    from sklearn.model_selection import train_test_split
+    from sklearn.model_selection import StratifiedGroupKFold
 
     X, columnas = matriz_de_variables(df)
     y = df[objetivo]
     estratos = pd.qcut(y, q=4, labels=False, duplicates="drop")
-    X_tr, X_te, y_tr, y_te = train_test_split(
-        X, y, test_size=PROPORCION_PRUEBA, random_state=SEMILLA, stratify=estratos)
+    divisor = StratifiedGroupKFold(n_splits=round(1 / PROPORCION_PRUEBA), shuffle=True,
+                                   random_state=SEMILLA)
+    i_tr, i_te = next(divisor.split(X, estratos, groups=grupos_de(df)))
+    X_tr, X_te, y_tr, y_te = X.iloc[i_tr], X.iloc[i_te], y.iloc[i_tr], y.iloc[i_te]
 
     medianas = X_tr.median().to_dict()
     return X_tr.fillna(medianas), X_te.fillna(medianas), y_tr, y_te, columnas, medianas

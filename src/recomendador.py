@@ -102,6 +102,23 @@ def predecir(evento: dict) -> dict:
     return salida
 
 
+def prediccion_red_neuronal(evento: dict, nivel: float = 0.90) -> dict | None:
+    """
+    Segunda opinion de la red neuronal (ensamble): PM10 esperado con intervalo
+    de incertidumbre y probabilidad de superar el umbral. None si no se ha
+    ejecutado src/red_neuronal.py.
+    """
+    paq = _cargar("predimin_red_neuronal", obligatorio=False)
+    if paq is None:
+        return None
+    X = _X(evento, paq)
+    media, lo, hi = paq["regresion"].predict_intervalo(X, nivel)
+    prob = float(paq["clasificacion"].predict_proba(X)[0, 1])
+    return {"valor": round(float(media[0]), 1), "limite_inferior": round(float(lo[0]), 1),
+            "limite_superior": round(float(hi[0]), 1), "nivel_intervalo": nivel,
+            "probabilidad_superar_oms": round(prob, 3), "umbral": paq["umbral"]}
+
+
 def contribuciones(evento: dict, objetivo: str = "pm10_ugm3", top: int = 8):
     """Contribucion SHAP (ug/m3) de cada variable a ESTE evento."""
     try:
@@ -284,6 +301,11 @@ if __name__ == "__main__":
         print(f"  {i}. {r['nombre']}  -- {r['motivo']}")
     print("\nESCENARIOS:")
     print(evaluar_escenarios(EVENTO_EJEMPLO).to_string(index=False))
+    rn = prediccion_red_neuronal(EVENTO_EJEMPLO)
+    if rn:
+        print(f"\nRED NEURONAL: {rn['valor']} ug/m3 (intervalo 90 %: "
+              f"{rn['limite_inferior']} - {rn['limite_superior']}), "
+              f"prob. de superar 45: {rn['probabilidad_superar_oms']}")
     print("\nCONTRIBUCION SHAP (ug/m3):")
     c = contribuciones(EVENTO_EJEMPLO)
     if c is not None:

@@ -3,12 +3,15 @@ PREDIMIN - Modulo 2: entrenamiento, optimizacion y seleccion del modelo predicti
 
 Flujo (coherente con Zhang et al., 2026 - Figura 3 del plan de tesis):
 
-  1. Division 80:20 (entrenamiento / prueba independiente).
+  1. Division 80:20 (entrenamiento / prueba independiente), agrupada por fecha:
+     los registros de un mismo dia quedan juntos (comparten el polvo de fondo;
+     separarlos filtraria informacion y el R2 saldria inflado).
   2. Para cada uno de los 6 algoritmos de ensamble (Random Forest, Extra Trees,
-     Gradient Boosting, XGBoost, LightGBM y CatBoost):
+     Gradient Boosting, XGBoost, LightGBM y CatBoost) y la red neuronal
+     (ensamble de perceptrones multicapa, ver red_neuronal.py):
        - optimizacion bayesiana de hiperparametros (Optuna, muestreador TPE)
          usando SOLO el conjunto de entrenamiento, con validacion cruzada de
-         5 particiones y funcion objetivo MSE.
+         5 particiones agrupadas por fecha y funcion objetivo MSE.
   3. Seleccion del modelo ganador por su desempeno en VALIDACION CRUZADA.
      El conjunto de prueba NO se usa para elegir: solo para reportar el
      desempeno final. (Elegir con el conjunto de prueba lo convierte en parte
@@ -19,6 +22,8 @@ Flujo (coherente con Zhang et al., 2026 - Figura 3 del plan de tesis):
      si el modelo sirve para meses que no vio. Es la prueba mas exigente.
   7. Modelo de CLASIFICACION del riesgo de superar la guia OMS (45 ug/m3):
      con datos ruidosos suele ser mas util "va a superar o no" que el valor exacto.
+     Compite la red neuronal (con la arquitectura hallada en el paso 2) contra
+     los algoritmos de arboles.
 
 Todas las metricas se calculan en ug/m3. (Opcion USAR_LOG en config.py para
 entrenar sobre log(1+PM10); con estos datos no mejora el resultado.)
@@ -43,7 +48,7 @@ from sklearn.ensemble import (
 )
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.compose import TransformedTargetRegressor
-from sklearn.model_selection import KFold, StratifiedKFold, TimeSeriesSplit, cross_val_predict, cross_val_score
+from sklearn.model_selection import GroupKFold, StratifiedGroupKFold, TimeSeriesSplit, cross_val_score
 
 from config import (
     DIR_MODELOS,
@@ -55,7 +60,7 @@ from config import (
     UMBRAL_RIESGO,
     USAR_LOG,
 )
-from preprocesamiento import dividir, matriz_de_variables, preparar
+from preprocesamiento import dividir, grupos_de, matriz_de_variables, preparar
 
 
 def con_log(modelo):
@@ -202,8 +207,9 @@ def metricas(y_real, y_pred) -> dict:
     }
 
 
-def _particiones():
-    return KFold(n_splits=K_FOLDS, shuffle=True, random_state=SEMILLA), None
+def _particiones(df, indice):
+    """Validacion cruzada de K particiones agrupadas por fecha."""
+    return GroupKFold(n_splits=K_FOLDS), grupos_de(df, indice)
 
 
 def _cv(modelo, X, y, cv, grupos, scoring):
@@ -258,6 +264,10 @@ def _valores_minimos(espacio):
             self.v[n] = lo
             return lo
 
+        def suggest_categorical(self, n, opciones):
+            self.v[n] = opciones[0]
+            return opciones[0]
+
     s = _Sonda()
     espacio(s)
     return s.v
@@ -272,7 +282,7 @@ def entrenar_objetivo(df: pd.DataFrame, objetivo: str, n_trials: int):
     print(f"  Entrenamiento: {len(X_tr)} registros | Prueba: {len(X_te)} registros")
     print(f"  Optimizacion bayesiana: {n_trials} ensayos por algoritmo\n")
 
-    cv, grupos_cv = _particiones()
+    cv, grupos_cv = _particiones(df, X_tr.index)
     resultados, ajustados, hiperparametros = [], {}, {}
 
     for nombre, (constructor_base, espacio, por_defecto) in catalogo_modelos().items():
@@ -331,23 +341,17 @@ def entrenar_objetivo(df: pd.DataFrame, objetivo: str, n_trials: int):
     grafico_observado_vs_predicho(y_te, modelo_final.predict(X_te), objetivo, ganador,
                                   metricas(y_te, modelo_final.predict(X_te)))
 
-    return modelo_final, X_tr, X_te, columnas, tabla, ganador, float(r2_t.mean())
+    return (modelo_final, X_tr, X_te, columnas, tabla, ganador, float(r2_t.mean()),
+            hiperparametros.get("RedNeuronal_MLP"))
 
 
 # ---------------------------------------------------------------------------
 # Clasificacion: riesgo de superar el umbral
 # ---------------------------------------------------------------------------
-def entrenar_clasificador(df: pd.DataFrame, objetivo: str):
+def candidatos_clasificacion(hp_red: dict | None = None) -> dict:
+    """Clasificadores que compiten por estimar el riesgo de superar el umbral."""
     from sklearn.ensemble import (ExtraTreesClassifier, GradientBoostingClassifier,
                                   RandomForestClassifier)
-    from sklearn.metrics import (f1_score, precision_score, recall_score,
-                                 roc_auc_score)
-
-    umbral = UMBRAL_RIESGO[objetivo]
-    X_tr, X_te, y_tr, y_te, columnas, medianas = dividir(df, objetivo)
-    c_tr, c_te = (y_tr > umbral).astype(int), (y_te > umbral).astype(int)
-    print(f"\n  CLASIFICACION: riesgo de {objetivo} > {umbral:.0f} ug/m3 "
-          f"({c_tr.mean() * 100:.0f} % de los registros superan)")
 
     cands = {
         "RandomForest": RandomForestClassifier(n_estimators=500, min_samples_leaf=5,
@@ -372,11 +376,30 @@ def entrenar_clasificador(df: pd.DataFrame, objetivo: str):
                                                random_seed=SEMILLA, allow_writing_files=False)
     except ImportError:
         pass
+    from red_neuronal import crear_red_clasificacion
+    cands["RedNeuronal_MLP"] = crear_red_clasificacion(hp_red)
 
-    skf = StratifiedKFold(n_splits=K_FOLDS, shuffle=True, random_state=SEMILLA)
+    return cands
+
+
+def entrenar_clasificador(df: pd.DataFrame, objetivo: str, hp_red: dict | None = None):
+    from sklearn.metrics import (f1_score, precision_score, recall_score,
+                                 roc_auc_score)
+
+    umbral = UMBRAL_RIESGO[objetivo]
+    X_tr, X_te, y_tr, y_te, columnas, medianas = dividir(df, objetivo)
+    c_tr, c_te = (y_tr > umbral).astype(int), (y_te > umbral).astype(int)
+    print(f"\n  CLASIFICACION: riesgo de {objetivo} > {umbral:.0f} ug/m3 "
+          f"({c_tr.mean() * 100:.0f} % de los registros superan)")
+
+    cands = candidatos_clasificacion(hp_red)
+
+    skf = StratifiedGroupKFold(n_splits=K_FOLDS, shuffle=True, random_state=SEMILLA)
+    grupos = grupos_de(df, X_tr.index)
     filas, ajustados = [], {}
     for nombre, m in cands.items():
-        auc_cv = cross_val_score(m, X_tr, c_tr, cv=skf, scoring="roc_auc").mean()
+        auc_cv = cross_val_score(m, X_tr, c_tr, cv=skf, groups=grupos,
+                                 scoring="roc_auc", n_jobs=-1).mean()
         m.fit(X_tr, c_tr)
         p = m.predict_proba(X_te)[:, 1]
         pred = (p >= 0.5).astype(int)
@@ -478,6 +501,50 @@ def analisis_shap(modelo, X_tr, X_te, columnas, objetivo: str):
 
 
 # ---------------------------------------------------------------------------
+# Reconstruccion rapida (para publicar la app en la nube)
+# ---------------------------------------------------------------------------
+def reconstruir_modelos(objetivo: str = "pm10_ugm3"):
+    """
+    Vuelve a crear los archivos de models/ SIN repetir la optimizacion: usa los
+    modelos ganadores y los hiperparametros guardados en outputs/ por el
+    entrenamiento completo. Misma semilla y misma division 80:20, asi que se
+    obtienen los mismos modelos. No modifica ninguna tabla ni figura de outputs/.
+    Tarda menos de un minuto; la app lo llama si no encuentra los modelos.
+    """
+    from red_neuronal import crear_red, crear_red_clasificacion
+
+    resumen = json.loads((DIR_SALIDAS / "resumen_entrenamiento.json").read_text(encoding="utf-8"))
+    hp = json.loads((DIR_SALIDAS / f"hiperparametros_{objetivo}.json").read_text(encoding="utf-8"))
+    info = resumen[objetivo]
+    hp_red = hp.get("RedNeuronal_MLP")
+
+    df = preparar(verbose=False)
+    X_tr, _, y_tr, _, columnas, medianas = dividir(df, objetivo)
+
+    ganador = info["modelo_seleccionado"]
+    modelo = con_log(catalogo_modelos()[ganador][0](hp[ganador])).fit(X_tr, y_tr)
+    joblib.dump({"modelo": modelo, "columnas": columnas, "objetivo": objetivo,
+                 "algoritmo": ganador, "hiperparametros": hp[ganador], "medianas": medianas},
+                DIR_MODELOS / f"predimin_{objetivo}.joblib")
+
+    if info.get("clasificador_riesgo") and objetivo in UMBRAL_RIESGO:
+        umbral = UMBRAL_RIESGO[objetivo]
+        c_tr = (y_tr > umbral).astype(int)
+        nombre = info["clasificador_riesgo"]["Modelo"]
+        clf = candidatos_clasificacion(hp_red)[nombre].fit(X_tr, c_tr)
+        joblib.dump({"modelo": clf, "columnas": columnas, "umbral": umbral,
+                     "algoritmo": nombre, "medianas": medianas},
+                    DIR_MODELOS / f"predimin_riesgo_{objetivo}.joblib")
+
+        p = {k: v for k, v in (hp_red or {}).items()}
+        joblib.dump({"regresion": crear_red(p).fit(X_tr, y_tr),
+                     "clasificacion": crear_red_clasificacion(p).fit(X_tr, c_tr),
+                     "columnas": columnas, "medianas": medianas, "umbral": umbral,
+                     "hiperparametros": p},
+                    DIR_MODELOS / "predimin_red_neuronal.joblib")
+
+
+# ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description="Entrenamiento de PREDIMIN")
     ap.add_argument("--trials", type=int, default=N_TRIALS_OPTUNA,
@@ -492,13 +559,14 @@ def main():
 
     resumen = {}
     for objetivo in OBJETIVOS:
-        modelo, X_tr, X_te, columnas, tabla, ganador, r2_temp = entrenar_objetivo(
+        modelo, X_tr, X_te, columnas, tabla, ganador, r2_temp, hp_red = entrenar_objetivo(
             df, objetivo, args.trials)
         analisis_shap(modelo, X_tr, X_te, columnas, objetivo)
-        clas = entrenar_clasificador(df, objetivo) if objetivo in UMBRAL_RIESGO else None
+        clas = (entrenar_clasificador(df, objetivo, hp_red)
+                if objetivo in UMBRAL_RIESGO else None)
         resumen[objetivo] = {
             "modelo_seleccionado": ganador,
-            "criterio_seleccion": "mayor R2 medio en validacion cruzada (entrenamiento)",
+            "criterio_seleccion": "mayor R2 medio en validacion cruzada agrupada por fecha (entrenamiento)",
             "metricas": tabla.iloc[0].to_dict(),
             "r2_validacion_temporal": round(r2_temp, 4),
             "clasificador_riesgo": clas,
