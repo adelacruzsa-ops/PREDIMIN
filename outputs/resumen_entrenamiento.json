@@ -1,0 +1,28 @@
+{
+  "pm10_ugm3": {
+    "modelo_seleccionado": "ExtraTrees",
+    "criterio_seleccion": "mayor R2 medio en validacion cruzada (entrenamiento)",
+    "metricas": {
+      "Modelo": "ExtraTrees",
+      "R2_CV_medio": 0.2176,
+      "R2_CV_desv": 0.1039,
+      "RMSE_CV_medio": 30.164,
+      "R2_test": 0.2342,
+      "RMSE_test": 36.7257,
+      "MAE_test": 21.344,
+      "MAPE_%_test": 108.73,
+      "R2_temporal_ganador": 0.0315
+    },
+    "r2_validacion_temporal": 0.0315,
+    "clasificador_riesgo": {
+      "Modelo": "ExtraTrees",
+      "AUC_CV": 0.8133,
+      "AUC_test": 0.7941,
+      "Sensibilidad_test": 0.7647,
+      "Precision_test": 0.5417,
+      "F1_test": 0.6341
+    },
+    "n_registros": 401,
+    "n_trials_optuna": 40
+  }
+}

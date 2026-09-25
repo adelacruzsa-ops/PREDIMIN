@@ -1,0 +1,6 @@
+Modelo,AUC_CV,AUC_test,Sensibilidad_test,Precision_test,F1_test
+ExtraTrees,0.8133,0.7941,0.7647,0.5417,0.6341
+CatBoost,0.8061,0.796,0.4118,0.5,0.4516
+RandomForest,0.8039,0.7518,0.4118,0.5385,0.4667
+LightGBM,0.7958,0.7381,0.4118,0.35,0.3784
+GradientBoosting,0.7575,0.7858,0.1765,0.375,0.24

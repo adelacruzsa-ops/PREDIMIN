@@ -1,0 +1,12 @@
+﻿variable,descripcion,prioridad
+pm10_hora_previa_ugm3,PM10 promedio de la hora ANTERIOR al disparo (fondo). Permite aislar el aporte de la voladura,Alta
+pm10_hora_posterior_ugm3,PM10 promedio de 1 a 2 horas DESPUES del disparo (pico de la voladura),Alta
+estacion_monitoreo,Codigo y coordenadas UTM de la estacion que registro el PM10,Alta
+coordenadas_disparo,Coordenadas UTM (o banco/fase) del proyecto de voladura,Alta
+distancia_disparo_estacion_m,Distancia entre el disparo y la estacion (se puede calcular con las coordenadas),Alta
+pm25_ugm3,PM2.5 en los mismos horarios (segundo indicador de la tesis),Media
+temperatura_c,Temperatura al momento del disparo,Media
+burden_m / espaciamiento_m / altura_banco_m / longitud_taco_m,Geometria de perforacion,Media
+tipo_roca / litologia,Litologia dominante del bloque,Media
+riego_previo (si/no) / nebulizacion (si/no),Si se aplico alguna medida de control: permite medir su efecto real,Media
+motivo_pm10_cero,Confirmar si los registros con PM10 = 0 corresponden a falla o mantenimiento del monitor,Alta

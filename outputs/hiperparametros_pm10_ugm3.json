@@ -1,0 +1,52 @@
+{
+  "RandomForest": {
+    "n_estimators": 550,
+    "max_depth": 19,
+    "min_samples_leaf": 8,
+    "max_features": 0.38211092558820536
+  },
+  "ExtraTrees": {
+    "n_estimators": 150,
+    "max_depth": 15,
+    "min_samples_leaf": 5,
+    "max_features": 0.7087738489021961
+  },
+  "GradientBoosting": {
+    "n_estimators": 100,
+    "learning_rate": 0.011381659820186149,
+    "max_depth": 3,
+    "min_samples_leaf": 7,
+    "subsample": 0.7447664874619755
+  },
+  "XGBoost": {
+    "n_estimators": 100,
+    "learning_rate": 0.01529685107334084,
+    "max_depth": 2,
+    "subsample": 0.8189736931888547,
+    "colsample_bytree": 0.8275765985657748,
+    "min_child_weight": 7.363911420084752,
+    "reg_lambda": 0.003412485917285091
+  },
+  "LightGBM": {
+    "n_estimators": 100,
+    "learning_rate": 0.017076054474389826,
+    "num_leaves": 35,
+    "min_child_samples": 29,
+    "subsample": 0.7284727804886667,
+    "subsample_freq": 1,
+    "colsample_bytree": 0.8262498898771143,
+    "reg_lambda": 0.019166122961542877
+  },
+  "CatBoost": {
+    "iterations": 300,
+    "learning_rate": 0.015521231712211063,
+    "depth": 3,
+    "l2_leaf_reg": 7.482569693397399
+  },
+  "RedNeuronal_MLP": {
+    "n_capas": 1,
+    "neuronas": 64,
+    "alpha": 21.04998058047481,
+    "learning_rate_init": 0.004138040112561018
+  }
+}
