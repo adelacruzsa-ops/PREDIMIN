@@ -348,17 +348,10 @@ def entrenar_objetivo(df: pd.DataFrame, objetivo: str, n_trials: int):
 # ---------------------------------------------------------------------------
 # Clasificacion: riesgo de superar el umbral
 # ---------------------------------------------------------------------------
-def entrenar_clasificador(df: pd.DataFrame, objetivo: str, hp_red: dict | None = None):
+def candidatos_clasificacion(hp_red: dict | None = None) -> dict:
+    """Clasificadores que compiten por estimar el riesgo de superar el umbral."""
     from sklearn.ensemble import (ExtraTreesClassifier, GradientBoostingClassifier,
                                   RandomForestClassifier)
-    from sklearn.metrics import (f1_score, precision_score, recall_score,
-                                 roc_auc_score)
-
-    umbral = UMBRAL_RIESGO[objetivo]
-    X_tr, X_te, y_tr, y_te, columnas, medianas = dividir(df, objetivo)
-    c_tr, c_te = (y_tr > umbral).astype(int), (y_te > umbral).astype(int)
-    print(f"\n  CLASIFICACION: riesgo de {objetivo} > {umbral:.0f} ug/m3 "
-          f"({c_tr.mean() * 100:.0f} % de los registros superan)")
 
     cands = {
         "RandomForest": RandomForestClassifier(n_estimators=500, min_samples_leaf=5,
@@ -385,6 +378,21 @@ def entrenar_clasificador(df: pd.DataFrame, objetivo: str, hp_red: dict | None =
         pass
     from red_neuronal import crear_red_clasificacion
     cands["RedNeuronal_MLP"] = crear_red_clasificacion(hp_red)
+
+    return cands
+
+
+def entrenar_clasificador(df: pd.DataFrame, objetivo: str, hp_red: dict | None = None):
+    from sklearn.metrics import (f1_score, precision_score, recall_score,
+                                 roc_auc_score)
+
+    umbral = UMBRAL_RIESGO[objetivo]
+    X_tr, X_te, y_tr, y_te, columnas, medianas = dividir(df, objetivo)
+    c_tr, c_te = (y_tr > umbral).astype(int), (y_te > umbral).astype(int)
+    print(f"\n  CLASIFICACION: riesgo de {objetivo} > {umbral:.0f} ug/m3 "
+          f"({c_tr.mean() * 100:.0f} % de los registros superan)")
+
+    cands = candidatos_clasificacion(hp_red)
 
     skf = StratifiedGroupKFold(n_splits=K_FOLDS, shuffle=True, random_state=SEMILLA)
     grupos = grupos_de(df, X_tr.index)
@@ -490,6 +498,50 @@ def analisis_shap(modelo, X_tr, X_te, columnas, objetivo: str):
         print(f"    [aviso] no se pudo generar la figura SHAP: {e}")
 
     return importancia
+
+
+# ---------------------------------------------------------------------------
+# Reconstruccion rapida (para publicar la app en la nube)
+# ---------------------------------------------------------------------------
+def reconstruir_modelos(objetivo: str = "pm10_ugm3"):
+    """
+    Vuelve a crear los archivos de models/ SIN repetir la optimizacion: usa los
+    modelos ganadores y los hiperparametros guardados en outputs/ por el
+    entrenamiento completo. Misma semilla y misma division 80:20, asi que se
+    obtienen los mismos modelos. No modifica ninguna tabla ni figura de outputs/.
+    Tarda menos de un minuto; la app lo llama si no encuentra los modelos.
+    """
+    from red_neuronal import crear_red, crear_red_clasificacion
+
+    resumen = json.loads((DIR_SALIDAS / "resumen_entrenamiento.json").read_text(encoding="utf-8"))
+    hp = json.loads((DIR_SALIDAS / f"hiperparametros_{objetivo}.json").read_text(encoding="utf-8"))
+    info = resumen[objetivo]
+    hp_red = hp.get("RedNeuronal_MLP")
+
+    df = preparar(verbose=False)
+    X_tr, _, y_tr, _, columnas, medianas = dividir(df, objetivo)
+
+    ganador = info["modelo_seleccionado"]
+    modelo = con_log(catalogo_modelos()[ganador][0](hp[ganador])).fit(X_tr, y_tr)
+    joblib.dump({"modelo": modelo, "columnas": columnas, "objetivo": objetivo,
+                 "algoritmo": ganador, "hiperparametros": hp[ganador], "medianas": medianas},
+                DIR_MODELOS / f"predimin_{objetivo}.joblib")
+
+    if info.get("clasificador_riesgo") and objetivo in UMBRAL_RIESGO:
+        umbral = UMBRAL_RIESGO[objetivo]
+        c_tr = (y_tr > umbral).astype(int)
+        nombre = info["clasificador_riesgo"]["Modelo"]
+        clf = candidatos_clasificacion(hp_red)[nombre].fit(X_tr, c_tr)
+        joblib.dump({"modelo": clf, "columnas": columnas, "umbral": umbral,
+                     "algoritmo": nombre, "medianas": medianas},
+                    DIR_MODELOS / f"predimin_riesgo_{objetivo}.joblib")
+
+        p = {k: v for k, v in (hp_red or {}).items()}
+        joblib.dump({"regresion": crear_red(p).fit(X_tr, y_tr),
+                     "clasificacion": crear_red_clasificacion(p).fit(X_tr, c_tr),
+                     "columnas": columnas, "medianas": medianas, "umbral": umbral,
+                     "hiperparametros": p},
+                    DIR_MODELOS / "predimin_red_neuronal.joblib")
 
 
 # ---------------------------------------------------------------------------

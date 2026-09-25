@@ -3,16 +3,34 @@ PREDIMIN - Modulo 4: interfaz web del sistema inteligente.
 
 Ejecutar con:
     streamlit run src/app.py
+
+En Streamlit Community Cloud: archivo principal "src/app.py". Si no existen los
+modelos (no se suben a GitHub), la app los reconstruye al abrirse.
 """
 
 import pandas as pd
 import streamlit as st
 
-from config import COLORES_ALERTA, DIR_SALIDAS, ECA_PERU, GUIA_OMS
+from config import COLORES_ALERTA, DIR_MODELOS, DIR_SALIDAS, ECA_PERU, GUIA_OMS
 from recomendador import (contribuciones, evaluar_escenarios, prediccion_red_neuronal,
                           recomendar)
 
 st.set_page_config(page_title="PREDIMIN", page_icon="⛏", layout="wide")
+
+
+
+@st.cache_resource(show_spinner="Preparando los modelos por primera vez (menos de 1 minuto)...")
+def asegurar_modelos():
+    """En la nube no se suben los modelos: se reconstruyen con los resultados de outputs/."""
+    faltan = [n for n in ("predimin_pm10_ugm3", "predimin_riesgo_pm10_ugm3",
+                          "predimin_red_neuronal")
+              if not (DIR_MODELOS / f"{n}.joblib").exists()]
+    if faltan and (DIR_SALIDAS / "resumen_entrenamiento.json").exists():
+        from entrenamiento import reconstruir_modelos
+        reconstruir_modelos()
+
+
+asegurar_modelos()
 
 st.title("PREDIMIN")
 st.caption(

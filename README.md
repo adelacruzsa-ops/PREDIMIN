@@ -17,6 +17,17 @@ Tesis — Ingeniería de Minas, UNSA. Caso de estudio: U.M. La Arena.
 
 Resultados: carpeta `outputs`, en especial **`RESULTADOS_TESIS.xlsx`** (todas las tablas).
 
+## Publicar la app en internet (Streamlit Community Cloud, gratis)
+
+1. Entrar a https://share.streamlit.io y pulsar **Continue with GitHub**.
+2. **Create app** → **Deploy a public app from GitHub**.
+3. Repository: `adelacruzsa-ops/PREDIMIN` · Branch: `main` · Main file path: `src/app.py`.
+4. En **Advanced settings**, elegir Python **3.12**. Pulsar **Deploy**.
+
+La primera vez tarda unos minutos (instala las librerías y reconstruye los modelos
+a partir de `outputs/`). Antes de publicar, confirmar con la mina que autoriza
+mostrar sus datos.
+
 ## Uso desde la terminal de VS Code
 
 ```
