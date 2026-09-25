@@ -8,17 +8,87 @@ En Streamlit Community Cloud: archivo principal "src/app.py". Si no existen los
 modelos (no se suben a GitHub), la app los reconstruye al abrirse.
 """
 
+import json
+
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
-from config import COLORES_ALERTA, DIR_MODELOS, DIR_SALIDAS, ECA_PERU, GUIA_OMS
+from config import DIR_MODELOS, DIR_SALIDAS, ECA_PERU, ETIQUETAS, GUIA_OMS
 from recomendador import (contribuciones, evaluar_escenarios, prediccion_red_neuronal,
                           recomendar)
 
-st.set_page_config(page_title="PREDIMIN", page_icon="⛏", layout="wide")
+st.set_page_config(page_title="PREDIMIN · Predicción de PM10 en voladuras",
+                   page_icon="⛰️", layout="wide", initial_sidebar_state="auto")
+
+# ---------------------------------------------------------------------------
+# Identidad visual
+# ---------------------------------------------------------------------------
+AZUL = "#1F3864"          # institucional (tambien en el Excel de resultados)
+AZUL_SERIE = "#2a78d6"    # serie de datos
+ROJO_SERIE = "#e34948"    # contribucion que SUBE el PM10
+TINTA, TINTA_2, REJILLA = "#1B1F24", "#5B6470", "#E6E9EE"
+
+# Niveles de alerta: color de estado + icono + etiqueta (nunca solo color)
+NIVELES = {
+    "VERDE":    {"color": "#0ca30c", "fondo": "#E8F6E8", "icono": "✔", "texto": "Riesgo bajo",
+                 "detalle": "PM10 esperado por debajo del 60 % de la guía OMS."},
+    "AMARILLO": {"color": "#C98A00", "fondo": "#FEF6E3", "icono": "!", "texto": "Riesgo moderado",
+                 "detalle": "PM10 esperado cercano a la guía OMS (45 µg/m³)."},
+    "NARANJA":  {"color": "#D9632F", "fondo": "#FDEEE7", "icono": "▲", "texto": "Riesgo alto",
+                 "detalle": "Se espera superar la guía OMS; aplicar medidas preventivas."},
+    "ROJO":     {"color": "#d03b3b", "fondo": "#FBE9E9", "icono": "✖", "texto": "Riesgo crítico",
+                 "detalle": "Se espera superar el ECA nacional (100 µg/m³)."},
+}
+
+st.markdown(f"""
+<style>
+  #MainMenu, footer {{visibility: hidden;}}
+  .block-container {{padding-top: 1.6rem; padding-bottom: 2rem; max-width: 1280px;}}
+  h1, h2, h3, h4 {{color: {TINTA}; letter-spacing: -0.01em;}}
+  .pm-header {{
+      background: linear-gradient(120deg, {AZUL} 0%, #2E5597 100%);
+      border-radius: 14px; padding: 22px 28px; color: #fff; margin-bottom: 1.2rem;
+  }}
+  .pm-header h1 {{color: #fff; margin: 0; font-size: 2rem; font-weight: 800;}}
+  .pm-header p {{margin: .25rem 0 .7rem; opacity: .92; font-size: 1rem;}}
+  .pm-chip {{display: inline-block; background: rgba(255,255,255,.16); border-radius: 999px;
+             padding: 3px 12px; margin: 0 6px 4px 0; font-size: .78rem;}}
+  .pm-card {{background: #fff; border: 1px solid {REJILLA}; border-radius: 12px;
+             padding: 16px 18px; height: 100%;}}
+  .pm-kpi-label {{color: {TINTA_2}; font-size: .82rem; font-weight: 600;}}
+  .pm-kpi-value {{color: {TINTA}; font-size: 1.9rem; font-weight: 800; line-height: 1.2;}}
+  .pm-kpi-sub {{color: {TINTA_2}; font-size: .85rem;}}
+  .pm-alert {{border-radius: 12px; padding: 16px 20px; display: flex; gap: 16px;
+              align-items: center; border-left: 8px solid;}}
+  .pm-alert-icon {{width: 44px; height: 44px; border-radius: 50%; color: #fff; display: flex;
+                   align-items: center; justify-content: center; font-size: 1.3rem;
+                   font-weight: 800; flex-shrink: 0;}}
+  .pm-alert-title {{font-size: 1.25rem; font-weight: 800; color: {TINTA};}}
+  .pm-alert-text {{color: {TINTA_2}; font-size: .92rem;}}
+  .pm-rec {{background: #fff; border: 1px solid {REJILLA}; border-radius: 12px;
+            padding: 14px 16px; margin-bottom: 10px;}}
+  .pm-rec-num {{display: inline-flex; width: 26px; height: 26px; border-radius: 50%;
+                background: {AZUL}; color: #fff; align-items: center; justify-content: center;
+                font-weight: 700; font-size: .85rem; margin-right: 8px;}}
+  .pm-rec-title {{font-weight: 700; color: {TINTA}; font-size: 1rem;}}
+  .pm-rec-body {{color: {TINTA_2}; font-size: .9rem; margin-top: 6px;}}
+  .pm-tag {{display: inline-block; background: #EEF2F8; color: {AZUL}; border-radius: 6px;
+            padding: 1px 8px; font-size: .75rem; font-weight: 600; margin-top: 8px;}}
+  .pm-note {{color: {TINTA_2}; font-size: .82rem;}}
+  .pm-step {{background: #fff; border: 1px solid {REJILLA}; border-top: 4px solid {AZUL};
+             border-radius: 10px; padding: 12px 14px; min-height: 170px;}}
+  .pm-step b {{color: {AZUL};}}
+  .pm-footer {{color: {TINTA_2}; font-size: .78rem; text-align: center; margin-top: 2.5rem;
+               border-top: 1px solid {REJILLA}; padding-top: 1rem;}}
+  section[data-testid="stSidebar"] h2 {{font-size: 1.1rem;}}
+</style>
+""", unsafe_allow_html=True)
 
 
-
+# ---------------------------------------------------------------------------
+# Modelos (en la nube se reconstruyen a partir de outputs/)
+# ---------------------------------------------------------------------------
 @st.cache_resource(show_spinner="Preparando los modelos por primera vez (menos de 1 minuto)...")
 def asegurar_modelos():
     """En la nube no se suben los modelos: se reconstruyen con los resultados de outputs/."""
@@ -32,194 +102,419 @@ def asegurar_modelos():
 
 asegurar_modelos()
 
-st.title("PREDIMIN")
-st.caption(
-    "Sistema inteligente de prediccion y mitigacion de material particulado "
-    "generado por voladuras en mineria superficial — Unidad Minera La Arena"
-)
+
+def leer_csv(nombre):
+    ruta = DIR_SALIDAS / nombre
+    return pd.read_csv(ruta) if ruta.exists() else None
+
+
+def leer_json(nombre):
+    ruta = DIR_SALIDAS / nombre
+    return json.loads(ruta.read_text(encoding="utf-8")) if ruta.exists() else None
+
+
+def etiqueta(v):
+    return ETIQUETAS.get(v, v)
+
+
+def estilo_figura(fig, alto):
+    fig.update_layout(
+        height=alto, margin=dict(l=10, r=20, t=10, b=10), paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)", font=dict(color=TINTA, size=13),
+        hoverlabel=dict(bgcolor="white", font_size=13), showlegend=False,
+    )
+    fig.update_xaxes(gridcolor=REJILLA, zeroline=False, linecolor=REJILLA)
+    fig.update_yaxes(gridcolor=REJILLA, zeroline=False, linecolor=REJILLA)
+    return fig
+
+
+def tarjeta_kpi(col, titulo, valor, sub=""):
+    col.markdown(f"<div class='pm-card'><div class='pm-kpi-label'>{titulo}</div>"
+                 f"<div class='pm-kpi-value'>{valor}</div>"
+                 f"<div class='pm-kpi-sub'>{sub}</div></div>", unsafe_allow_html=True)
+
 
 # ---------------------------------------------------------------------------
-# Entradas (valores por defecto = medianas de los registros 2023-2024)
+# Encabezado
 # ---------------------------------------------------------------------------
+st.markdown("""
+<div class="pm-header">
+  <h1>PREDIMIN</h1>
+  <p>Sistema inteligente de predicción y mitigación de material particulado (PM10)
+     generado por voladuras en minería superficial</p>
+  <span class="pm-chip">Unidad Minera La Arena · La Libertad</span>
+  <span class="pm-chip">401 voladuras · ene 2023 – may 2024</span>
+  <span class="pm-chip">7 modelos de aprendizaje automático + red neuronal</span>
+  <span class="pm-chip">UNSA · Ingeniería de Minas</span>
+</div>
+""", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# Entradas (valores por defecto = registros tipicos 2023-2024)
+# ---------------------------------------------------------------------------
+MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto",
+         "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+
 with st.sidebar:
-    st.header("Parametros del disparo")
+    st.markdown("## Parámetros de la voladura")
+    st.caption("Los resultados se actualizan al cambiar cualquier valor.")
 
-    st.subheader("Diseño de voladura")
-    numero_taladros = st.number_input("Numero de taladros", 1, 1000, 130)
-    tonelaje = st.number_input("Tonelaje fracturado (t)", 100.0, 300000.0, 64729.0, step=1000.0)
-    anfo = st.number_input("ANFO (kg)", 0.0, 20000.0, 2760.0, step=100.0)
-    emulsion = st.number_input("Emulsion (kg)", 0.0, 60000.0, 11277.0, step=100.0)
-    explosivo = anfo + emulsion
-    st.info(f"Heavy ANFO total: **{explosivo:,.0f} kg**  \n"
-            f"Factor de carga: **{explosivo / tonelaje:.3f} kg/t**")
-    n_eventos = st.number_input("Disparos en el dia", 1, 6, 1)
-    t_taladro = st.number_input("Retardo entre taladros (ms)", 0.0, 500.0, 17.0)
-    t_fila = st.number_input("Retardo entre filas (ms)", 0.0, 2000.0, 182.0)
+    with st.expander("Diseño de carga", expanded=True):
+        numero_taladros = st.number_input("Número de taladros", 1, 1000, 130)
+        tonelaje = st.number_input("Tonelaje fracturado (t)", 100.0, 300000.0, 64729.0,
+                                   step=1000.0, format="%.0f")
+        anfo = st.number_input("ANFO (kg)", 0.0, 20000.0, 2760.0, step=100.0, format="%.0f")
+        emulsion = st.number_input("Emulsión (kg)", 0.0, 60000.0, 11277.0, step=100.0,
+                                   format="%.0f")
+        explosivo = anfo + emulsion
+        st.markdown(f"<div class='pm-card' style='padding:10px 14px'>"
+                    f"<span class='pm-note'>Heavy ANFO total</span><br><b>{explosivo:,.0f} kg</b>"
+                    f"<br><span class='pm-note'>Factor de carga</span><br>"
+                    f"<b>{explosivo / tonelaje:.3f} kg/t</b></div>", unsafe_allow_html=True)
 
-    st.subheader("Programacion")
-    hora = st.slider("Hora del disparo", 6, 18, 12)
-    mes = st.selectbox("Mes", list(range(1, 13)), index=7,
-                       format_func=lambda m: ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul",
-                                              "Ago", "Sep", "Oct", "Nov", "Dic"][m - 1])
+    with st.expander("Secuencia y programación", expanded=True):
+        n_eventos = st.number_input("Disparos en el día", 1, 6, 2)
+        t_taladro = st.number_input("Retardo entre taladros (ms)", 0.0, 500.0, 17.0)
+        t_fila = st.number_input("Retardo entre filas (ms)", 0.0, 2000.0, 182.0)
+        hora = st.slider("Hora del disparo", 6, 18, 12, format="%d:00")
+        mes = st.selectbox("Mes", list(range(1, 13)), index=7,
+                           format_func=lambda m: MESES[m - 1])
 
-    st.subheader("Condiciones meteorologicas")
-    humedad = st.slider("Humedad relativa (%)", 0, 100, 35)
-    viento = st.slider("Velocidad del viento (m/s)", 0.0, 8.0, 2.5, 0.1)
-    direccion = st.slider("Direccion del viento (grados)", 0, 360, 306)
-    precip = st.number_input("Precipitacion (mm)", 0.0, 50.0, 0.0, step=0.1)
-
-    evaluar = st.button("Evaluar voladura", type="primary", width="stretch")
+    with st.expander("Condiciones meteorológicas", expanded=True):
+        humedad = st.slider("Humedad relativa (%)", 0, 100, 35)
+        viento = st.slider("Velocidad del viento (m/s)", 0.0, 8.0, 2.5, 0.1)
+        direccion = st.slider("Dirección del viento (°)", 0, 360, 306)
+        precip = st.number_input("Precipitación (mm)", 0.0, 50.0, 0.0, step=0.1)
 
 evento = {
-    "numero_taladros": numero_taladros,
-    "tonelaje_tm": tonelaje,
-    "anfo_kg": anfo,
-    "emulsion_kg": emulsion,
-    "explosivo_total_kg": explosivo,
-    "n_eventos": n_eventos,
-    "tiempo_taladro_ms": t_taladro,
-    "tiempo_fila_ms": t_fila,
-    "humedad_relativa_pct": float(humedad),
-    "velocidad_viento_ms": viento,
-    "direccion_viento_grados": float(direccion),
-    "precipitacion_mm": precip,
-    "hora": hora,
-    "mes": mes,
+    "numero_taladros": numero_taladros, "tonelaje_tm": tonelaje, "anfo_kg": anfo,
+    "emulsion_kg": emulsion, "explosivo_total_kg": explosivo, "n_eventos": n_eventos,
+    "tiempo_taladro_ms": t_taladro, "tiempo_fila_ms": t_fila,
+    "humedad_relativa_pct": float(humedad), "velocidad_viento_ms": viento,
+    "direccion_viento_grados": float(direccion), "precipitacion_mm": precip,
+    "hora": hora, "mes": mes,
 }
 
+
+# ---------------------------------------------------------------------------
+# Graficos
+# ---------------------------------------------------------------------------
+def grafico_pm10(valor, rango=None):
+    """Barra de bala: PM10 esperado frente a la guia OMS y al ECA."""
+    oms, eca = GUIA_OMS["pm10_ugm3"], ECA_PERU["pm10_ugm3"]
+    tope = max(130.0, valor * 1.15, (rango[1] if rango else 0) * 1.05)
+    fig = go.Figure()
+    for x0, x1, n in ((0, 0.6 * oms, "VERDE"), (0.6 * oms, oms, "AMARILLO"),
+                      (oms, eca, "NARANJA"), (eca, tope, "ROJO")):
+        fig.add_shape(type="rect", x0=x0, x1=x1, y0=-0.5, y1=0.5, line_width=0,
+                      fillcolor=NIVELES[n]["fondo"], layer="below")
+    fig.add_trace(go.Bar(x=[valor], y=[""], orientation="h", width=0.34,
+                         marker=dict(color=AZUL, cornerradius=4),
+                         hovertemplate="PM10 esperado: %{x:.1f} µg/m³<extra></extra>"))
+    if rango:
+        fig.add_trace(go.Scatter(x=list(rango), y=["", ""], mode="lines+markers",
+                                 line=dict(color=TINTA_2, width=2),
+                                 marker=dict(size=9, symbol="line-ns-open", color=TINTA_2),
+                                 hovertemplate="Rango de la red neuronal: %{x:.0f} µg/m³"
+                                               "<extra></extra>"))
+    for x, txt in ((oms, "Guía OMS 45"), (eca, "ECA Perú 100")):
+        fig.add_vline(x=x, line=dict(color=TINTA, width=1.5, dash="dot"))
+        fig.add_annotation(x=x, y=0.5, yshift=12, xshift=4, xanchor="left", text=txt,
+                           showarrow=False, font=dict(size=11, color=TINTA_2))
+    fig.update_xaxes(range=[0, tope], title="PM10 (µg/m³, media de 24 h)")
+    fig.update_yaxes(showticklabels=False, showgrid=False)
+    return estilo_figura(fig, 150)
+
+
+def grafico_escenarios(esc):
+    d = esc.iloc[::-1]
+    colores = [AZUL if e.startswith("Base") else AZUL_SERIE for e in d["escenario"]]
+    fig = go.Figure(go.Bar(
+        x=d["pm10_ugm3"], y=d["escenario"], orientation="h", marker=dict(
+            color=colores, cornerradius=4), text=[f"{v:.1f}" for v in d["pm10_ugm3"]],
+        textposition="outside", cliponaxis=False,
+        customdata=(d["prob_superar_45"] * 100).round(0),
+        hovertemplate="%{y}<br>PM10: %{x:.1f} µg/m³<br>Prob. > 45: %{customdata:.0f} %"
+                      "<extra></extra>"))
+    fig.add_vline(x=GUIA_OMS["pm10_ugm3"], line=dict(color=NIVELES["ROJO"]["color"],
+                                                     width=1.5, dash="dot"))
+    fig.add_annotation(x=GUIA_OMS["pm10_ugm3"], y=1, yref="paper", yshift=8,
+                       xshift=4, xanchor="left", text="Guía OMS", showarrow=False,
+                       font=dict(size=11, color=TINTA_2))
+    fig.update_xaxes(title="PM10 estimado (µg/m³)",
+                     range=[0, max(60, d["pm10_ugm3"].max() * 1.2)])
+    return estilo_figura(fig, 330)
+
+
+def grafico_contribuciones(tabla):
+    d = tabla.iloc[::-1]
+    fig = go.Figure(go.Bar(
+        x=d["contribucion"], y=[etiqueta(v) for v in d["variable"]], orientation="h",
+        marker=dict(color=[ROJO_SERIE if v > 0 else AZUL_SERIE for v in d["contribucion"]],
+                    cornerradius=4),
+        hovertemplate="%{y}: %{x:+.1f} µg/m³<extra></extra>"))
+    fig.add_vline(x=0, line=dict(color=TINTA_2, width=1))
+    fig.update_xaxes(title="Contribución al PM10 esperado (µg/m³)")
+    return estilo_figura(fig, 330)
+
+
+# ---------------------------------------------------------------------------
+# Pestaña 1: evaluacion del disparo
+# ---------------------------------------------------------------------------
 def pestana_evaluacion():
-    if evaluar or st.session_state.get("ya_evaluado"):
-        st.session_state["ya_evaluado"] = True
+    try:
+        resultado = recomendar(evento)
+    except (FileNotFoundError, RuntimeError) as e:
+        st.error(str(e))
+        return
 
-        try:
-            resultado = recomendar(evento)
-        except (FileNotFoundError, RuntimeError) as e:
-            st.error(str(e))
-            return
+    nivel = resultado["nivel_alerta"]
+    info = NIVELES[nivel]
+    p = resultado["prediccion"]["pm10_ugm3"]
+    rn = prediccion_red_neuronal(evento)
 
-        nivel = resultado["nivel_alerta"]
-        p = resultado["prediccion"]["pm10_ugm3"]
+    st.markdown(f"""
+    <div class="pm-alert" style="background:{info['fondo']};border-color:{info['color']};">
+      <div class="pm-alert-icon" style="background:{info['color']};">{info['icono']}</div>
+      <div><div class="pm-alert-title">Nivel de alerta {nivel.lower()} · {info['texto']}</div>
+           <div class="pm-alert-text">{info['detalle']}</div></div>
+    </div>""", unsafe_allow_html=True)
+    st.write("")
 
-        st.markdown(
-            f"<div style='background:{COLORES_ALERTA[nivel]};color:#fff;padding:14px 18px;"
-            f"border-radius:10px;font-size:1.25rem;font-weight:700;'>"
-            f"NIVEL DE ALERTA: {nivel}</div>",
-            unsafe_allow_html=True,
-        )
-        st.write("")
+    k1, k2, k3, k4 = st.columns(4)
+    tarjeta_kpi(k1, "PM10 esperado", f"{p['valor']:.1f} <small>µg/m³</small>",
+                f"{p['porcentaje_oms']:.0f} % de la guía OMS")
+    prob = p["probabilidad_superar_oms"]
+    tarjeta_kpi(k2, "Probabilidad de PM10 > 45 µg/m³",
+                "–" if prob is None else f"{prob * 100:.0f} %", "Modelo de clasificación")
+    if rn:
+        tarjeta_kpi(k3, "Red neuronal · PM10", f"{rn['valor']:.1f} <small>µg/m³</small>",
+                    f"rango del ensamble: {rn['limite_inferior']:.0f}–"
+                    f"{rn['limite_superior']:.0f}")
+        tarjeta_kpi(k4, "Red neuronal · Prob. > 45 µg/m³",
+                    f"{rn['probabilidad_superar_oms'] * 100:.0f} %", "Ensamble de 10 redes")
 
-        c1, c2 = st.columns(2)
-        with c1:
-            st.metric("PM10 esperado", f"{p['valor']:.1f} µg/m³",
-                      f"{p['porcentaje_oms']:.0f} % de la guia OMS", delta_color="inverse")
-            st.progress(min(p["valor"] / GUIA_OMS["pm10_ugm3"], 1.0))
-            st.caption(f"Guia OMS 2021 (24 h): {GUIA_OMS['pm10_ugm3']:.0f} µg/m³ · "
-                       f"ECA Peru (24 h): {ECA_PERU['pm10_ugm3']:.0f} µg/m³")
-        with c2:
-            if p["probabilidad_superar_oms"] is not None:
-                st.metric("Probabilidad de superar 45 µg/m³",
-                          f"{p['probabilidad_superar_oms'] * 100:.0f} %")
-                st.progress(p["probabilidad_superar_oms"])
-                st.caption("Modelo de clasificacion entrenado con los registros historicos.")
+    st.markdown("#### PM10 esperado frente a la normativa")
+    st.plotly_chart(grafico_pm10(p["valor"], (rn["limite_inferior"], rn["limite_superior"])
+                                 if rn else None),
+                    width="stretch", config={"displayModeBar": False})
+    st.markdown(
+        "<div class='pm-note'>Barra azul: modelo principal · línea gris: rango de las 10 redes "
+        "neuronales (percentiles 5–95; refleja la incertidumbre del modelo, no el ruido del "
+        "monitor) · franjas: niveles de alerta.</div>", unsafe_allow_html=True)
 
-        rn = prediccion_red_neuronal(evento)
-        if rn is not None:
-            st.markdown("**Segunda opinion: red neuronal (ensamble de 10 redes)**")
-            r1, r2 = st.columns(2)
-            r1.metric("PM10 esperado (red neuronal)", f"{rn['valor']:.1f} µg/m³",
-                      f"incertidumbre del modelo: {rn['limite_inferior']:.0f} – "
-                      f"{rn['limite_superior']:.0f} µg/m³", delta_color="off")
-            r2.metric("Probabilidad de superar 45 µg/m³ (red neuronal)",
-                      f"{rn['probabilidad_superar_oms'] * 100:.0f} %")
-            st.caption("El rango refleja el desacuerdo entre las redes del ensamble "
-                       "(percentiles 5-95): cuanto mas ancho, menos segura es la prediccion. "
-                       "No incluye el ruido del monitor, asi que el PM10 real puede caer fuera.")
-
-        st.info(
-            "Con los datos actuales el modelo explica una parte limitada de la "
-            "variacion del PM10 (ver README). Use el nivel de alerta y la "
-            "probabilidad como apoyo a la decision, no como valor exacto."
-        )
-
-        st.divider()
-        st.subheader("Medidas de mitigacion recomendadas")
+    st.write("")
+    izq, der = st.columns([1, 1], gap="large")
+    with izq:
+        st.markdown("#### Medidas de mitigación recomendadas")
         for i, r in enumerate(resultado["recomendaciones"], 1):
-            with st.expander(f"{i}. {r['nombre']}", expanded=(i <= 2)):
-                st.markdown(f"**Por que se recomienda:** {r['motivo']}")
-                st.markdown(f"**Accion concreta:** {r['detalle']}")
-                st.caption(f"Efecto: {r['reduccion_esperada']}")
-
-        st.divider()
-        st.subheader("Escenarios estimados por el modelo")
-        st.caption("Se cambia una variable a la vez y se vuelve a predecir.")
-        esc = evaluar_escenarios(evento)
-        esc["prob_superar_45"] = (esc["prob_superar_45"] * 100).round(0)
-        st.dataframe(
-            esc.rename(columns={"escenario": "Escenario", "pm10_ugm3": "PM10 (µg/m³)",
-                                "prob_superar_45": "Prob. > 45 (%)", "nivel": "Nivel",
-                                "reduccion_pm10_%": "Reduccion PM10 (%)"}),
-            width="stretch", hide_index=True,
-        )
-
-        st.divider()
-        st.subheader("Por que el modelo predice este valor")
-        st.caption("Contribucion SHAP de cada variable (µg/m³). Positivo = sube el PM10.")
+            st.markdown(f"""
+            <div class="pm-rec"><span class="pm-rec-num">{i}</span>
+              <span class="pm-rec-title">{r['nombre']}</span>
+              <div class="pm-rec-body"><b>Por qué:</b> {r['motivo']}<br>
+                   <b>Acción:</b> {r['detalle']}</div>
+              <span class="pm-tag">Efecto: {r['reduccion_esperada']}</span>
+            </div>""", unsafe_allow_html=True)
+    with der:
+        st.markdown("#### ¿Por qué el modelo predice este valor?")
         tabla = contribuciones(evento)
         if tabla is None:
-            st.info("Instale la libreria `shap` para ver esta seccion.")
+            st.info("La explicación SHAP está disponible cuando el modelo principal es de árboles.")
         else:
-            st.bar_chart(tabla.set_index("variable")["contribucion"])
-            st.dataframe(tabla, width="stretch", hide_index=True)
-    else:
-        st.info("Complete los parametros del disparo en el panel izquierdo y pulse "
-                "**Evaluar voladura**.")
+            st.plotly_chart(grafico_contribuciones(tabla), width="stretch",
+                            config={"displayModeBar": False})
+            st.markdown("<div class='pm-note'>Valores SHAP: en rojo lo que <b>sube</b> el PM10 "
+                        "esperado y en azul lo que lo <b>baja</b>, respecto al promedio "
+                        "histórico.</div>", unsafe_allow_html=True)
+
+    st.divider()
+    st.markdown("#### Escenarios de mitigación")
+    st.caption("Se modifica una variable a la vez y se vuelve a predecir con el modelo principal.")
+    esc = evaluar_escenarios(evento)
+    st.plotly_chart(grafico_escenarios(esc), width="stretch",
+                    config={"displayModeBar": False})
+    vista = pd.DataFrame({
+        "Escenario": esc["escenario"],
+        "PM10 (µg/m³)": esc["pm10_ugm3"],
+        "Prob. > 45": esc["prob_superar_45"] * 100,
+        "Cambio vs. base (%)": -esc["reduccion_pm10_%"],
+        "Nivel": [f"{NIVELES[n]['icono']} {NIVELES[n]['texto']}" for n in esc["nivel"]],
+    })
+    st.dataframe(vista, hide_index=True, width="stretch", column_config={
+        "PM10 (µg/m³)": st.column_config.NumberColumn(format="%.1f"),
+        "Prob. > 45": st.column_config.ProgressColumn(format="%.0f %%", min_value=0,
+                                                      max_value=100),
+        "Cambio vs. base (%)": st.column_config.NumberColumn(format="%+.1f"),
+    })
+    st.markdown(
+        "<div class='pm-note'>Con los datos actuales solo los escenarios meteorológicos "
+        "(humedad) tienen respaldo estadístico; las variables de voladura no muestran relación "
+        "significativa con el PM10 registrado. Use la predicción como apoyo a la decisión, no "
+        "como un valor exacto.</div>", unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------------
+# Pestaña 2: desempeño de los modelos
+# ---------------------------------------------------------------------------
+NOMBRE_MODELO = {"RedNeuronal_MLP": "Red neuronal (ensamble)", "ExtraTrees": "Extra Trees",
+                 "RandomForest": "Random Forest", "GradientBoosting": "Gradient Boosting"}
 
 
 def pestana_resultados():
-    st.subheader("Desempeño de los modelos (datos 2023-2024)")
-    def leer(nombre):
-        ruta = DIR_SALIDAS / nombre
-        return pd.read_csv(ruta) if ruta.exists() else None
-
-    t = leer("comparacion_modelos_pm10_ugm3.csv")
-    if t is None:
+    reg = leer_csv("comparacion_modelos_pm10_ugm3.csv")
+    clf = leer_csv("comparacion_clasificadores_pm10_ugm3.csv")
+    resumen = leer_json("resumen_entrenamiento.json")
+    if reg is None or resumen is None:
         st.info("Ejecute primero el entrenamiento (2_EJECUTAR_TODO.bat).")
         return
-    st.markdown("**Regresion: prediccion del valor de PM10** "
-                "(el modelo se elige por R² de validacion cruzada)")
-    st.dataframe(t, width="stretch", hide_index=True)
+    r = resumen["pm10_ugm3"]
+    shap = leer_csv("shap_importancia_pm10_ugm3.csv")
 
-    c = leer("comparacion_clasificadores_pm10_ugm3.csv")
-    if c is not None:
-        st.markdown("**Clasificacion: riesgo de superar 45 µg/m³** (AUC: 0,5 = azar, 1 = perfecto)")
-        st.dataframe(c, width="stretch", hide_index=True)
+    k1, k2, k3, k4 = st.columns(4)
+    tarjeta_kpi(k1, "Registros válidos", f"{r['n_registros']}",
+                "80 % entrenamiento · 20 % prueba")
+    tarjeta_kpi(k2, "Mejor modelo de regresión", NOMBRE_MODELO.get(
+        r["modelo_seleccionado"], r["modelo_seleccionado"]),
+        f"R² prueba = {r['metricas']['R2_test']:.2f} · MAE = {r['metricas']['MAE_test']:.1f}")
+    c = r["clasificador_riesgo"]
+    tarjeta_kpi(k3, "Clasificación del riesgo", f"AUC {c['AUC_CV']:.2f}",
+                f"{NOMBRE_MODELO.get(c['Modelo'], c['Modelo'])} · validación cruzada")
+    if shap is not None:
+        tarjeta_kpi(k4, "Variable más influyente",
+                    f"<span style='font-size:1.35rem'>{etiqueta(shap.iloc[0]['variable'])}</span>",
+                    "según el análisis SHAP")
+    st.write("")
 
-    corr = leer("correlaciones_pm10.csv")
-    if corr is not None:
-        st.markdown("**Correlacion de Spearman de cada variable con el PM10**")
-        st.bar_chart(corr.set_index("variable")["rho_spearman"])
+    izq, der = st.columns(2, gap="large")
+    with izq:
+        st.markdown("#### Regresión: R² en validación cruzada")
+        d = reg.sort_values("R2_CV_medio")
+        fig = go.Figure(go.Bar(
+            x=d["R2_CV_medio"], y=[NOMBRE_MODELO.get(m, m) for m in d["Modelo"]],
+            orientation="h", error_x=dict(array=d["R2_CV_desv"], color=TINTA_2, thickness=1),
+            marker=dict(color=[AZUL if m == r["modelo_seleccionado"] else AZUL_SERIE
+                               for m in d["Modelo"]], cornerradius=4),
+            hovertemplate="%{y}: R² = %{x:.3f}<extra></extra>"))
+        fig.update_xaxes(title="R² medio (± desviación, 5 particiones agrupadas por fecha)")
+        st.plotly_chart(estilo_figura(fig, 320), width="stretch",
+                        config={"displayModeBar": False})
+    with der:
+        st.markdown("#### Clasificación del riesgo (PM10 > 45): AUC")
+        if clf is not None:
+            d = clf.sort_values("AUC_CV")
+            fig = go.Figure(go.Bar(
+                x=d["AUC_CV"], y=[NOMBRE_MODELO.get(m, m) for m in d["Modelo"]],
+                orientation="h", marker=dict(color=[AZUL if m == c["Modelo"] else AZUL_SERIE
+                                                    for m in d["Modelo"]], cornerradius=4),
+                text=[f"{v:.3f}" for v in d["AUC_CV"]], textposition="outside",
+                cliponaxis=False, hovertemplate="%{y}: AUC = %{x:.3f}<extra></extra>"))
+            fig.add_vline(x=0.5, line=dict(color=TINTA_2, dash="dot"))
+            fig.update_xaxes(range=[0.5, 0.9], title="AUC (0,5 = azar · 1 = perfecto)")
+            st.plotly_chart(estilo_figura(fig, 320), width="stretch",
+                            config={"displayModeBar": False})
 
-    figuras = [
-        ("pm10_vs_variables.png", "PM10 frente a variables meteorologicas y de voladura"),
-        ("pm10_por_mes.png", "Estacionalidad del PM10"),
-        ("observado_vs_predicho_pm10_ugm3.png", "Modelo seleccionado: observado vs. predicho"),
-        ("shap_beeswarm_pm10_ugm3.png", "Importancia de variables (SHAP)"),
-        ("red_neuronal_arquitectura.png", "Arquitectura de la red neuronal"),
-        ("red_neuronal_roc.png", "Red neuronal: curva ROC del riesgo de superar 45 µg/m³"),
-        ("red_neuronal_observado_vs_predicho.png", "Red neuronal: observado vs. predicho con intervalo 90 %"),
-        ("red_neuronal_curva_aprendizaje.png", "Curva de aprendizaje de la red neuronal"),
-        ("red_neuronal_regularizacion.png", "Red neuronal: efecto de la regularizacion"),
-        ("red_neuronal_importancia.png", "Red neuronal: importancia de variables (permutacion)"),
+    with st.expander("Tablas completas de métricas"):
+        st.markdown("**Regresión**")
+        st.dataframe(reg.rename(columns={
+            "R2_CV_medio": "R² CV", "R2_CV_desv": "Desv. R² CV", "RMSE_CV_medio": "RMSE CV",
+            "R2_test": "R² prueba", "RMSE_test": "RMSE prueba", "MAE_test": "MAE prueba",
+            "MAPE_%_test": "MAPE prueba (%)", "R2_temporal_ganador": "R² temporal"}),
+            hide_index=True, width="stretch")
+        if clf is not None:
+            st.markdown("**Clasificación**")
+            st.dataframe(clf.rename(columns={
+                "AUC_CV": "AUC CV", "AUC_test": "AUC prueba",
+                "Sensibilidad_test": "Sensibilidad", "Precision_test": "Precisión",
+                "F1_test": "F1"}), hide_index=True, width="stretch")
+
+    st.divider()
+    st.markdown("#### Figuras del análisis")
+    grupos = {
+        "Datos": [("pm10_vs_variables.png", "PM10 frente a variables meteorológicas y de voladura"),
+                  ("pm10_por_mes.png", "Estacionalidad del PM10")],
+        "Modelo principal": [
+            ("observado_vs_predicho_pm10_ugm3.png", "Observado vs. predicho (prueba)"),
+            ("shap_beeswarm_pm10_ugm3.png", "Importancia de variables (SHAP)")],
+        "Red neuronal": [
+            ("red_neuronal_arquitectura.png", "Arquitectura de la red"),
+            ("red_neuronal_roc.png", "Curva ROC del riesgo"),
+            ("red_neuronal_observado_vs_predicho.png", "Observado vs. predicho con incertidumbre"),
+            ("red_neuronal_curva_aprendizaje.png", "Curva de aprendizaje"),
+            ("red_neuronal_regularizacion.png", "Efecto de la regularización"),
+            ("red_neuronal_importancia.png", "Importancia de variables (permutación)")],
+    }
+    for pest, (nombre, figs) in zip(st.tabs(list(grupos)), grupos.items()):
+        with pest:
+            cols = st.columns(2, gap="large")
+            for i, (archivo, titulo) in enumerate(f for f in figs if (DIR_SALIDAS / f[0]).exists()):
+                with cols[i % 2]:
+                    st.markdown(f"**{titulo}**")
+                    st.image(str(DIR_SALIDAS / archivo), width="stretch")
+
+
+# ---------------------------------------------------------------------------
+# Pestaña 3: acerca del sistema
+# ---------------------------------------------------------------------------
+def pestana_acerca():
+    st.markdown("#### Cómo funciona PREDIMIN")
+    pasos = [
+        ("1 · Datos", "Registros de voladura, meteorología y PM10 de la U.M. La Arena, depurados "
+                      "(505 → 401 registros válidos)."),
+        ("2 · Modelos", "Seis ensambles de árboles y una red neuronal, optimizados con búsqueda "
+                        "bayesiana y validados por fecha."),
+        ("3 · Predicción", "PM10 esperado, probabilidad de superar la guía OMS y rango de "
+                           "incertidumbre."),
+        ("4 · Explicación", "Valores SHAP: qué variables empujan la predicción hacia arriba o "
+                            "hacia abajo."),
+        ("5 · Recomendación", "Nivel de alerta, medidas de mitigación y escenarios alternativos."),
     ]
-    for archivo, titulo in figuras:
-        ruta = DIR_SALIDAS / archivo
-        if ruta.exists():
-            st.markdown(f"**{titulo}**")
-            st.image(str(ruta))
+    for col, (t, d) in zip(st.columns(5), pasos):
+        col.markdown(f"<div class='pm-step'><b>{t}</b><br><span class='pm-note'>{d}</span></div>",
+                     unsafe_allow_html=True)
+
+    st.write("")
+    izq, der = st.columns(2, gap="large")
+    with izq:
+        st.markdown("#### Niveles de alerta")
+        st.dataframe(pd.DataFrame({
+            "Nivel": [f"{v['icono']} {k.capitalize()}" for k, v in NIVELES.items()],
+            "PM10 esperado (µg/m³)": ["< 27", "27 – 45", "45 – 100", "> 100"],
+            "Referencia": ["< 60 % guía OMS", "Hasta la guía OMS 2021", "Sobre la guía OMS",
+                           "Sobre el ECA (D.S. 003-2017-MINAM)"],
+        }), hide_index=True, width="stretch")
+        st.markdown("<div class='pm-note'>El nivel también sube si la probabilidad de superar "
+                    "45 µg/m³ es ≥ 40 % (moderado) o ≥ 70 % (alto).</div>",
+                    unsafe_allow_html=True)
+    with der:
+        st.markdown("#### Limitaciones")
+        st.markdown(
+            "- El PM10 de la estación incluye polvo de todas las fuentes, no solo de la voladura.\n"
+            "- Los datos no incluyen la distancia disparo–estación ni el PM10 previo al disparo.\n"
+            "- El modelo explica una parte limitada del PM10 (R² ≈ 0,2); la clasificación del "
+            "riesgo es más confiable (AUC ≈ 0,8).\n"
+            "- Los porcentajes de reducción del riego y la nebulización son referenciales "
+            "(Cecala et al., 2019; Kissell, 2003).\n"
+            "- Calibrado para La Arena: otra unidad minera requiere reentrenar el sistema.")
+
+    st.markdown("#### Equipo de investigación")
+    st.markdown(
+        "Borda Callañaupa, Héctor Elías · De la Cruz Sallo, Alexa Yoselin · "
+        "Onton Olivares, José Joao  \n"
+        "Asesor: Mg. Canahua Loza, Reynaldo Sabino  \n"
+        "Escuela Profesional de Ingeniería de Minas · Universidad Nacional de San Agustín de "
+        "Arequipa")
 
 
-tab1, tab2 = st.tabs(["Evaluar voladura", "Resultados del modelo"])
+tab1, tab2, tab3 = st.tabs(["Evaluar voladura", "Desempeño de los modelos",
+                            "Acerca del sistema"])
 with tab1:
     pestana_evaluacion()
 with tab2:
     pestana_resultados()
+with tab3:
+    pestana_acerca()
+
+st.markdown(
+    "<div class='pm-footer'>PREDIMIN · Universidad Nacional de San Agustín de Arequipa · "
+    "Normativa: Guía OMS 2021 (45 µg/m³) · ECA para Aire, D.S. N.° 003-2017-MINAM "
+    "(100 µg/m³)</div>", unsafe_allow_html=True)

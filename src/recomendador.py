@@ -152,9 +152,9 @@ CATALOGO_MEDIDAS = {
         "reduccion_esperada": "Referencial (citar fuente)",
     },
     "nebulizacion": {
-        "nombre": "Nebulizacion en el area del disparo",
+        "nombre": "Nebulización en el área del disparo",
         "detalle": "Operar nebulizadores o cañones de niebla antes y despues de la "
-                   "detonacion.",
+                   "detonación.",
         "reduccion_esperada": "Referencial (citar fuente)",
     },
     "reprogramar": {
@@ -164,22 +164,22 @@ CATALOGO_MEDIDAS = {
         "reduccion_esperada": "Ver tabla de escenarios",
     },
     "fraccionar": {
-        "nombre": "Fraccionar el disparo o reducir disparos por dia",
+        "nombre": "Fraccionar el disparo o reducir disparos por día",
         "detalle": "Dividir el proyecto en disparos menores o evitar varios "
-                   "eventos el mismo dia.",
+                   "eventos el mismo día.",
         "reduccion_esperada": "Ver tabla de escenarios",
     },
     "rediseno_carga": {
         "nombre": "Revisar el diseño de carga",
         "detalle": "Evaluar si el factor de carga puede reducirse sin afectar la "
-                   "fragmentacion (P80).",
+                   "fragmentación (P80).",
         "reduccion_esperada": "Ver tabla de escenarios",
     },
     "aviso": {
         "nombre": "Aviso y monitoreo reforzado",
         "detalle": "Comunicar a Medio Ambiente y Relaciones Comunitarias e "
                    "intensificar el monitoreo durante el evento.",
-        "reduccion_esperada": "No reduce la emision; reduce el riesgo social",
+        "reduccion_esperada": "No reduce la emisión; reduce el riesgo social",
     },
 }
 
@@ -201,10 +201,10 @@ def recomendar(evento: dict, prediccion: dict | None = None) -> dict:
     if ORDEN[nivel] >= 1:
         agregar("riego_previo", f"Nivel {nivel} (PM10 esperado {p['valor']:.0f} µg/m³{txt_prob}).")
     if ORDEN[nivel] >= 2:
-        agregar("nebulizacion", "Escenario con riesgo de superar la guia OMS.")
-        agregar("reprogramar", "Evaluar una ventana horaria mas favorable.")
+        agregar("nebulizacion", "Escenario con riesgo de superar la guía OMS.")
+        agregar("reprogramar", "Evaluar una ventana horaria más favorable.")
     if ORDEN[nivel] >= 3:
-        agregar("fraccionar", "La prediccion supera el ECA nacional de 24 h.")
+        agregar("fraccionar", "La predicción supera el ECA nacional de 24 h.")
         agregar("aviso", "Posible incumplimiento del ECA.")
 
     humedad = float(evento.get("humedad_relativa_pct", 100))
@@ -214,17 +214,17 @@ def recomendar(evento: dict, prediccion: dict | None = None) -> dict:
     fc = float(evento.get("explosivo_total_kg", 0)) / ton if ton > 0 else 0
 
     if humedad < 50:
-        agregar("riego_previo", f"Humedad relativa de {humedad:.0f} %: condicion seca "
+        agregar("riego_previo", f"Humedad relativa de {humedad:.0f} %: condición seca "
                                 f"(la variable de mayor influencia en los datos).")
     if viento > 3.0:
-        agregar("reprogramar", f"Viento de {viento:.1f} m/s (percentil 90 historico: ~3 m/s).")
+        agregar("reprogramar", f"Viento de {viento:.1f} m/s (percentil 90 histórico: ~3 m/s).")
     if eventos > 1:
-        agregar("fraccionar", f"{eventos:.0f} disparos el mismo dia.")
+        agregar("fraccionar", f"{eventos:.0f} disparos el mismo día.")
     if fc > 0.30:
-        agregar("rediseno_carga", f"Factor de carga de {fc:.2f} kg/t (mediana historica: 0.23).")
+        agregar("rediseno_carga", f"Factor de carga de {fc:.2f} kg/t (mediana histórica: 0,23).")
 
     if not medidas:
-        recs = [{"nombre": "Operacion normal",
+        recs = [{"nombre": "Operación normal",
                  "detalle": "No se requieren medidas adicionales. Mantener el riego y "
                             "monitoreo de rutina.",
                  "reduccion_esperada": "-",
@@ -248,11 +248,11 @@ def escenarios_estandar(evento: dict) -> dict:
     esc["Fraccionar (50 % del disparo)"] = {**e,
         **{k: e[k] * 0.5 for k in ("explosivo_total_kg", "anfo_kg", "emulsion_kg",
                                    "numero_taladros", "tonelaje_tm") if e.get(k)}}
-    esc["Un solo disparo en el dia"] = {**e, "n_eventos": 1}
+    esc["Un solo disparo en el día"] = {**e, "n_eventos": 1}
     esc["Disparar a las 07:00"] = {**e, "hora": 7}
-    esc["Condicion mas humeda (+15 % HR)"] = {
+    esc["Condición más húmeda (+15 % HR)"] = {
         **e, "humedad_relativa_pct": min(100.0, e["humedad_relativa_pct"] + 15)}
-    esc["Viento calmo (0.5 m/s)"] = {**e, "velocidad_viento_ms": 0.5}
+    esc["Viento calmo (0,5 m/s)"] = {**e, "velocidad_viento_ms": 0.5}
     return esc
 
 
