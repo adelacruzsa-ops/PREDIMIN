@@ -94,3 +94,20 @@ N_TRIALS_OPTUNA = 40       # ensayos de optimizacion bayesiana por algoritmo
 # Entrenar sobre log(1+PM10). Con estos datos empeora el R2 en ug/m3 porque
 # subestima los picos, por eso queda desactivado. Se deja como opcion.
 USAR_LOG = False
+
+# ---------------------------------------------------------------------------
+# Nombres legibles de las variables (tablas, reporte y aplicacion)
+# ---------------------------------------------------------------------------
+ETIQUETAS = {
+    "numero_taladros": "Número de taladros", "tonelaje_tm": "Tonelaje fracturado (t)",
+    "anfo_kg": "ANFO (kg)", "emulsion_kg": "Emulsión (kg)",
+    "explosivo_total_kg": "Explosivo total - Heavy ANFO (kg)", "n_eventos": "Disparos en el día",
+    "tiempo_taladro_ms": "Retardo entre taladros (ms)", "tiempo_fila_ms": "Retardo entre filas (ms)",
+    "humedad_relativa_pct": "Humedad relativa (%)", "velocidad_viento_ms": "Velocidad del viento (m/s)",
+    "precipitacion_mm": "Precipitación (mm)", "hora": "Hora del disparo",
+    "viento_sin": "Dirección del viento (seno)", "viento_cos": "Dirección del viento (coseno)",
+    "mes_sin": "Mes (seno)", "mes_cos": "Mes (coseno)",
+    "factor_carga_kg_t": "Factor de carga (kg/t)", "explosivo_por_taladro": "Explosivo por taladro (kg)",
+    "fraccion_emulsion": "Fracción de emulsión", "indice_seco": "Índice seco",
+    "pm10_ugm3": "PM10 (µg/m³)",
+}

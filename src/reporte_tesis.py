@@ -23,23 +23,10 @@ import json
 
 import pandas as pd
 
-from config import DIR_SALIDAS, OBJETIVOS
+from config import DIR_SALIDAS, ETIQUETAS as NOMBRES, OBJETIVOS
 from importar_excel import importar
 from preprocesamiento import columnas_modelo, preparar
 
-NOMBRES = {
-    "numero_taladros": "Numero de taladros", "tonelaje_tm": "Tonelaje fracturado (t)",
-    "anfo_kg": "ANFO (kg)", "emulsion_kg": "Emulsion (kg)",
-    "explosivo_total_kg": "Explosivo total - Heavy ANFO (kg)", "n_eventos": "Disparos en el dia",
-    "tiempo_taladro_ms": "Retardo entre taladros (ms)", "tiempo_fila_ms": "Retardo entre filas (ms)",
-    "humedad_relativa_pct": "Humedad relativa (%)", "velocidad_viento_ms": "Velocidad del viento (m/s)",
-    "precipitacion_mm": "Precipitacion (mm)", "hora": "Hora del disparo",
-    "viento_sin": "Direccion del viento (seno)", "viento_cos": "Direccion del viento (coseno)",
-    "mes_sin": "Mes (seno)", "mes_cos": "Mes (coseno)",
-    "factor_carga_kg_t": "Factor de carga (kg/t)", "explosivo_por_taladro": "Explosivo por taladro (kg)",
-    "fraccion_emulsion": "Fraccion de emulsion", "indice_seco": "Indice seco",
-    "pm10_ugm3": "PM10 (ug/m3)",
-}
 
 
 def _leer(nombre):
