@@ -56,10 +56,27 @@ src/    config.py                       variables, umbrales OMS/ECA, parámetros
         red_neuronal.py                 Red neuronal: ensamble de 10 MLP con incertidumbre; ejecutada sola genera su análisis completo
         reporte_tesis.py                Reúne todas las tablas en outputs/RESULTADOS_TESIS.xlsx
         recomendador.py                 Módulo 3: alerta, medidas y escenarios
-        app.py                          Módulo 4: interfaz web (Streamlit)
+        app.py                          Módulo 4: interfaz web (Streamlit), 5 pestañas
+        ficha_pdf.py                    Ficha de evaluación pre-voladura en PDF
+        programa.py                     Evaluación del programa semanal de voladuras (Excel)
+        estilo_pdf.py                   Estilo común de los PDF
 models/ outputs/                        modelos, tablas y figuras (generados)
 docs/   REVISION_PLAN_TESIS.md          revisión del plan de tesis, textos propuestos y resultados v5
+        MANUAL_USUARIO_PREDIMIN.pdf     manual de usuario (anexo de la tesis)
+        generar_manual.py, img/         fuente del manual y capturas de pantalla
 ```
+
+## Funciones de la aplicación (https://predimin.streamlit.app)
+
+| Pestaña | Qué hace |
+|---|---|
+| Evaluar voladura | Nivel de alerta, PM10 esperado, probabilidad de superar 45 µg/m³, red neuronal, explicación SHAP, medidas, escenarios y **ficha PDF pre-voladura** |
+| Programa de voladuras | Sube un Excel con los disparos de la semana, los evalúa y los ordena por riesgo; descarga el resultado |
+| Datos históricos | Serie 2023-2024 del PM10 con límites OMS/ECA, superaciones por mes y relación humedad–PM10 |
+| Desempeño de los modelos | Comparación de los 7 modelos y figuras del análisis |
+| Acerca del sistema | Funcionamiento, niveles de alerta, limitaciones y equipo |
+
+Manual de usuario: `docs/MANUAL_USUARIO_PREDIMIN.pdf`. Ficha de ejemplo: `outputs/ficha_prevoladura_ejemplo.pdf`.
 
 ## Novedades de la versión 5
 
